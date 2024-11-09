@@ -27,12 +27,14 @@ y = np.linspace(-resolution // 2, resolution // 2 - 1, resolution) * pixel_size
 X, Y = np.meshgrid(x, y)
 
 # Define the incident light
-initial_field = np.ones((resolution, resolution), dtype=complex)
+aperture_radius = 1e-3  # coherence aperture's diameter 1mm
+initial_field = np.zeros((resolution, resolution), dtype=complex)  # Initialization
+initial_field[(X**2 + Y**2) <= aperture_radius**2] = 1 + 0j
 
 # Define the sample
 sample_amplitude = np.ones((resolution, resolution))
 sample_phase = np.zeros((resolution, resolution)) # Initialization
-sample_radius = 0.5e-3
+sample_radius = 2e-3
 sample_phase[(X ** 2 + Y ** 2) <= sample_radius ** 2] = np.pi / 2
 sample = sample_amplitude * np.exp(1j * sample_phase)
 
