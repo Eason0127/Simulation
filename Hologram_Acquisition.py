@@ -17,7 +17,7 @@ def angular_spectrum_approach(complex_field, distance, wavelength, pixel_size):
     # Transfer function
     H = np.exp(1j * k * distance * np.sqrt(1 - (wavelength * FX) ** 2 - (wavelength * FY) ** 2))
     mask = (wavelength * FX) ** 2 + (wavelength * FY) ** 2 > 1
-    H[mask] = 0  # Set evanescent wave components to 0
+    H[mask] = 0
     # Propagation
     A = np.fft.fft2(complex_field)  # Angular spectrum
     AZ = A * H  # Apply the transfer function
