@@ -79,7 +79,7 @@ for wavelength in wavelengths:
 phase = np.angle(field_of_initial_guess)
 total_intensity_of_initial_guess = np.abs(field_of_initial_guess) ** 2
 
-# Plot
+# Plot the initial guess
 plt.figure(figsize=(12, 6))
 
 plt.subplot(1, 2, 1)
@@ -104,5 +104,68 @@ plt.title("Initial guess of Phase at Sample Plane")
 
 plt.show()
 
+# Update the amplitude with a weighted average:60% of the newly forward-propagated field and,40% of the measured one
+amplitude_of_hologram = np.abs(field_at_sensor)
+amplitude_of_initial_guess = np.abs(field_of_initial_guess)
+updated_amplitude = 0.6 * amplitude_of_initial_guess + 0.4 * amplitude_of_hologram
+updated_field = updated_amplitude * np.exp(1j * phase)
 
+# Forward-propagate the updated field to the sensor plane
+new_field_at_sensor_plane = np.zeros((resolution, resolution), dtype=complex)
+for wavelength in wavelengths:
+    forward_propagate_to_sensor = angular_spectrum_approach(updated_field, Z2, wavelength, pixel_size)
+    new_field_at_sensor_plane += forward_propagate_to_sensor
+new_field_intensity = np.abs(new_field_at_sensor_plane) ** 2
+new_field_phase = np.angle(new_field_at_sensor_plane)
 
+# Plot the new field
+plt.figure(figsize=(12, 6))
+plt.subplot(1, 2, 1)
+plt.imshow(new_field_intensity, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
+                                                     resolution // 2 * pixel_size * 1e6,
+                                                     -resolution // 2 * pixel_size * 1e6,
+                                                     resolution // 2 * pixel_size * 1e6))
+plt.colorbar(label="Amplitude")
+plt.xlabel("x (µm)")
+plt.ylabel("y (µm)")
+plt.title("Amplitude of new field at Sensor Plane")
+plt.subplot(1, 2, 2)
+plt.imshow(new_field_phase, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
+                                                 resolution // 2 * pixel_size * 1e6,
+                                                 -resolution // 2 * pixel_size * 1e6,
+                                                 resolution // 2 * pixel_size * 1e6))
+plt.colorbar(label="Phase")
+plt.xlabel("x (µm)")
+plt.ylabel("y (µm)")
+plt.title("Phase of new field at Sensor Plane")
+plt.show()
+
+# back-propagate to the sample plane again
+new_field_at_sample_plane = np.zeros((resolution, resolution), dtype=complex)
+for wavelength in wavelengths:
+    back_propagate_to_sample = angular_spectrum_approach(new_field_at_sensor_plane, -Z2, wavelength, pixel_size)
+    new_field_at_sample_plane += back_propagate_to_sample
+new_field_intensity_at_sample = np.abs(new_field_at_sample_plane) ** 2
+new_field_phase_at_sample = np.angle(new_field_at_sample_plane)
+
+# Plot the new field at sample plane
+plt.figure(figsize=(12, 6))
+plt.subplot(1, 2, 1)
+plt.imshow(new_field_intensity_at_sample, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
+                                                     resolution // 2 * pixel_size * 1e6,
+                                                     -resolution // 2 * pixel_size * 1e6,
+                                                     resolution // 2 * pixel_size * 1e6))
+plt.colorbar(label="Amplitude")
+plt.xlabel("x (µm)")
+plt.ylabel("y (µm)")
+plt.title("Amplitude of new field at Sample Plane")
+plt.subplot(1, 2, 2)
+plt.imshow(new_field_phase_at_sample, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
+                                                 resolution // 2 * pixel_size * 1e6,
+                                                 -resolution // 2 * pixel_size * 1e6,
+                                                 resolution // 2 * pixel_size * 1e6))
+plt.colorbar(label="Phase")
+plt.xlabel("x (µm)")
+plt.ylabel("y (µm)")
+plt.title("Phase of new field at Sample Plane")
+plt.show()
