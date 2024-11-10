@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 # 设置参数
 wavelengths = np.linspace(528e-9,534e-9, 10) # Wavelength along 530nm with 4nm bandwidth
 distance = 0.07  # Propagation distance
-resolution = 512  # Resolution
+resolution = 1024  # Resolution
 pixel_size = 1.3e-6  # Pixel size(1.3 µm）
 
 # Definition of angular spectrum approach
