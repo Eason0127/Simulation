@@ -54,7 +54,6 @@ field_at_sensor = np.zeros((resolution, resolution), dtype=complex) # Initializa
 for wavelength in wavelengths:
     propagated_field_to_sensor = angular_spectrum_approach(field_after_sample, Z2, wavelength, pixel_size)
     field_at_sensor += propagated_field_to_sensor
-
 total_intensity_at_sample = np.abs(field_at_sensor) ** 2
 
 # Plot the hologram
@@ -75,13 +74,11 @@ field_of_initial_guess = np.zeros((resolution, resolution), dtype=complex) # Ini
 for wavelength in wavelengths:
     back_propagated_field_to_sample = angular_spectrum_approach(field_at_sensor, -Z2, wavelength, pixel_size)
     field_of_initial_guess += back_propagated_field_to_sample
-
 phase = np.angle(field_of_initial_guess)
 total_intensity_of_initial_guess = np.abs(field_of_initial_guess) ** 2
 
 # Plot the initial guess
 plt.figure(figsize=(12, 6))
-
 plt.subplot(1, 2, 1)
 plt.imshow(total_intensity_of_initial_guess, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
                                                 resolution // 2 * pixel_size * 1e6,
@@ -91,7 +88,6 @@ plt.colorbar(label="Amplitude")
 plt.xlabel("x (µm)")
 plt.ylabel("y (µm)")
 plt.title("Initial guess of Amplitude at Sample Plane")
-
 plt.subplot(1, 2, 2)
 plt.imshow(phase, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
                                             resolution // 2 * pixel_size * 1e6,
@@ -101,7 +97,6 @@ plt.colorbar(label="Phase")
 plt.xlabel("x (µm)")
 plt.ylabel("y (µm)")
 plt.title("Initial guess of Phase at Sample Plane")
-
 plt.show()
 
 # Update the amplitude with a weighted average:60% of the newly forward-propagated field and,40% of the measured one
