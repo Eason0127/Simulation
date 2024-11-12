@@ -83,6 +83,7 @@ phase_of_origin_hologram = np.angle(field_at_sensor)
 plot(intensity_of_origin_hologram, phase_of_origin_hologram, "Intensity of origin hologram", "Phase of origin hologram")
 
 # Apply back-propagation to this hologram to make an initial guess
+total_intensity_of_initial_guess = np.zeros((resolution, resolution))
 field_of_initial_guess = propagation(field_at_sensor, -Z2)
 phase_of_initial_guess = np.angle(field_of_initial_guess) # Need this parameter later in the amplitude update
 intensity_of_initial_guess = np.abs(field_of_initial_guess) ** 2
