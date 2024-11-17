@@ -7,7 +7,7 @@ Z2 = 0.005
 Z1 = 0.07
 resolution = 1024
 pixel_size = 1.3e-6
-k_max = 100 # 100 iterations
+
 # Definition of the angular spectrum approach
 def angular_spectrum_approach(complex_field, distance, wavelength, pixel_size):
     k = 2 * np.pi / wavelength
@@ -34,64 +34,71 @@ def propagation(initial_field, distance):
 def one_wavelength_propagation(field, wavelength, distance):
     propagated_field = angular_spectrum_approach(field, distance, wavelength, pixel_size)
     return propagated_field
-def update_and_propagation(field_hologram, initial_guess_field, distance, number_of_wavelengths, k_max):
-    next_amplitude = [] # amplitude of the newest field
-    origin_phase = [] # phase before propagation
-    phase_for_compute = [] # phase of the newest field
-    gk = [] # g_k
+
+def amplitude_update(amplitude, phase_of_initial_guess, distance, number_of_wavelengths):
+        sum = np.zeros((resolution, resolution), dtype=complex)
+        for wavelength in wavelengths:
+            phase = wavelengths[0] / wavelength * phase_of_initial_guess
+            field = amplitude * np.exp(1j * phase)
+            FP_field = one_wavelength_propagation(field, wavelength, distance)  # forward propagate to the sensor
+            BP_field = one_wavelength_propagation(FP_field, wavelength, -distance)
+            BP_field_amplitude = np.abs(BP_field)
+            BP_field_phase = np.angle(BP_field)
+            # Energy constrains
+            mask = BP_field_amplitude > 1
+            BP_field[mask] = np.exp(1j * BP_field_phase)
+            sum += BP_field
+        averaged_field = sum / number_of_wavelengths
+        return averaged_field
+
+
+def update_and_propagation(field_hologram, initial_guess_field, distance, number_of_wavelengths, k_max, loss):
+    next_amplitude = []
+    initial_phase = []
+    next_phase = []
+    g_k = []
+    alpha = 0  # 初始化 alpha
+    amplitude_of_hologram = np.abs(field_hologram)
+    phase_of_initial_guess = np.angle(initial_guess_field)
+    initial_phase.append(phase_of_initial_guess)
+    next_amplitude.append(amplitude_of_hologram)
 
     for k in range(k_max):
+        # 振幅更新
+        averaged_field = amplitude_update(next_amplitude[k], initial_phase[k], distance, number_of_wavelengths)
+        averaged_field_amplitude = np.abs(averaged_field)
+        averaged_field_phase = np.angle(averaged_field)
+
+        # 更新数组
+        next_phase.append(averaged_field_phase)
+        next_amplitude.append(averaged_field_amplitude)
+
+        # 计算更新量
         if k == 0:
-            amplitude_of_hologram = np.abs(field_hologram)
-            phase_of_initial_guess = np.angle(initial_guess_field)
-            next_amplitude.append(phase_of_initial_guess) # Put initial guess in the related array
-            sum = np.zeros((resolution, resolution), dtype=complex)
-            for wavelength in wavelengths:
-                phase = wavelengths[0] / wavelength * phase_of_initial_guess
-                field = amplitude_of_hologram * np.exp(1j * phase)
-                FP_field = one_wavelength_propagation(field, wavelength, distance)  # forward propagate to the sensor
-                BP_field = one_wavelength_propagation(FP_field, wavelength, -distance)
-                BP_field_amplitude = np.abs(BP_field)
-                BP_field_phase = np.angle(BP_field)
-                # Energy constrains
-                mask = BP_field_amplitude > 1
-                BP_field[mask] = np.exp(1j * BP_field_phase)
-                sum += BP_field
-            # Global update
-            averaged_field = sum / number_of_wavelengths
-            averaged_field_amplitude = np.abs(averaged_field)
-            averaged_field_phase = np.angle(averaged_field)
-            # Put the data in the related array for k = 0
-            phase_for_compute.append(averaged_field_phase)
-            gk.append(0)
-            # Put the data in the related array for k = 1
-            next_amplitude.append(averaged_field_amplitude)
-            origin_phase.append(averaged_field_phase)
+            gk = next_phase[k] - initial_phase[k]
+            g_k.append(gk)
+            phase_new = initial_phase[k]
+            initial_phase.append(phase_new)
         else:
-            h_k = origin_phase[k] - origin_phase[k - 1]
-            g_k = phase_for_compute[k] - origin_phase[k]
-            gk.append(g_k)
+            h_k = initial_phase[k] - initial_phase[k - 1]
+            gk = next_phase[k] - initial_phase[k]
+            g_k.append(gk)
+            # 计算 alpha
+            alpha = 0  # 初始化 alpha
             for i in range(k, 1, -1):
-                n = (gk[i] * gk[i - 1]) / (gk[i - 1] * gk[i - 1])
-                alpha_k += n
-            phase_k_next = origin_phase[k] + alpha_k * h_k
-            origin_phase.append(phase_k_next)
-            field_k = next_amplitude[k - 1] * np.exp(1j * origin_phase[k])
-            field_k_next = next_amplitude[k] *
+                n = (g_k[i] * g_k[i - 1]) / (g_k[i - 1] * g_k[i - 1])
+                alpha += n
+            # 更新相位
+            phase_new = initial_phase[k] + alpha * h_k
+            initial_phase.append(phase_new)
+
+        # 检查损失
+        norm = np.linalg.norm(amplitude_of_hologram - next_amplitude[k + 1]) ** 2
+        if norm < loss:
+            return averaged_field
 
 
 
-
-
-
-def MWPREGV(field, distance):
-
-    # back-propagate to the sample plane again
-    new_field_at_sample_plane = propagation(new_field_at_sensor_plane, -distance)
-    new_field_phase_at_sample = np.angle(new_field_at_sample_plane)
-    new_field_amplitude_at_sample = np.abs(new_field_at_sample_plane)
-    mask = new_field_amplitude_at_sample > 1
-    new_field_at_sample_plane[mask] = np.exp(1j * new_field_phase_at_sample) # Eliminating the twin image
 
 def plot(field, phase, title_1, title_2):
     plt.figure(figsize=(12, 6))
