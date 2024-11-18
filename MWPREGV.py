@@ -45,8 +45,8 @@ def amplitude_update(amplitude, phase_of_initial_guess, distance, number_of_wave
             BP_field_amplitude = np.abs(BP_field)
             BP_field_phase = np.angle(BP_field)
             # Energy constrains
-            mask = BP_field_amplitude > 1
-            BP_field[mask] = np.exp(1j * BP_field_phase)
+            mask = BP_field_amplitude > 1  # 生成布尔掩码
+            BP_field[mask] = np.exp(1j * BP_field_phase[mask])  # 只替换满足条件的部分
             sum += BP_field
         averaged_field = sum / number_of_wavelengths
         return averaged_field
@@ -96,14 +96,17 @@ def update_and_propagation(field_hologram, initial_guess_field, distance, number
         norm = np.linalg.norm(amplitude_of_hologram - next_amplitude[k + 1]) ** 2
         if norm < loss:
             return averaged_field
+    return next_amplitude[-1] * np.exp(1j * initial_phase[-1])
 
 
 
 
-def plot(field, phase, title_1, title_2):
+def plot(field, title_1, title_2):
+    amplitude = np.abs(field)
+    phase = np.angle(field)
     plt.figure(figsize=(12, 6))
     plt.subplot(1, 2, 1)
-    plt.imshow(field, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
+    plt.imshow(amplitude, cmap='gray', extent=(-resolution // 2 * pixel_size * 1e6,
                                                          resolution // 2 * pixel_size * 1e6,
                                                          -resolution // 2 * pixel_size * 1e6,
                                                          resolution // 2 * pixel_size * 1e6))
@@ -151,3 +154,8 @@ phase_of_origin_hologram = np.angle(field_at_sensor)
 
 # Apply back-propagation to all the holograms and make an average (but here we just have one hologram)
 field_of_initial_guess = propagation(field_at_sensor, -Z2)
+amplitude = np.abs(field_of_initial_guess)
+phase = np.angle(field_of_initial_guess)
+
+field2 = update_and_propagation(field_at_sensor, field_of_initial_guess, Z2, 10, 10, 0.1)
+plot(field2, "amplitude", "phase")
