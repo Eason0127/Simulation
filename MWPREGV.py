@@ -10,6 +10,7 @@ pixel_size = 1.3e-6
 
 # Definition of the angular spectrum approach
 def angular_spectrum_approach(complex_field, distance, wavelength, pixel_size):
+
     k = 2 * np.pi / wavelength
     fx = np.fft.fftfreq(resolution, d=pixel_size)
     fy = np.fft.fftfreq(resolution, d=pixel_size)
@@ -45,10 +46,10 @@ def amplitude_update(amplitude_recorded, amplitude_of_initial_guess, phase_of_in
         for wavelength in wavelengths:
             phase = wavelengths[0] / wavelength * phase_of_initial_guess
             field = amplitude_of_initial_guess * np.exp(1j * phase)
-            FP_field = one_wavelength_propagation(field, wavelength, distance)  # forward propagate to the sensor
+            FP_field = one_wavelength_propagation(field, wavelength, -distance)  # forward propagate to the sensor
             phase_of_FP_field = np.angle(FP_field)
             FP_field_new = amplitude_recorded * np.exp(1j * phase_of_FP_field)
-            BP_field = one_wavelength_propagation(FP_field_new, wavelength, -distance)
+            BP_field = one_wavelength_propagation(FP_field_new, wavelength, +distance)
             BP_field_amplitude = np.abs(BP_field)
             BP_field_phase = np.angle(BP_field)
             # Energy constrains
@@ -64,15 +65,13 @@ def update_and_propagation(intensity_norm, initial_guess_field, distance, number
     initial_phase = []
     updated_phase = []
     g_k = []
-    alpha = 0  # initialize alpha
     amplitude_of_hologram = np.sqrt(intensity_norm)
     phase_of_initial_guess = np.angle(initial_guess_field)
     initial_phase.append(phase_of_initial_guess)
     next_amplitude.append(amplitude_of_hologram)
-
     for k in range(k_max):
         # upgrade the amplitude
-        averaged_field = amplitude_update(next_amplitude[k], next_amplitude[k], initial_phase[k], distance, number_of_wavelengths)
+        averaged_field = amplitude_update(next_amplitude[0], next_amplitude[k], initial_phase[k], distance, number_of_wavelengths)
         averaged_field_amplitude = np.abs(averaged_field)
         averaged_field_phase = np.angle(averaged_field)
         # upgrade the arrays
@@ -158,4 +157,4 @@ intensity_of_initial_guess, phase_of_initial_guess, field_of_initial_guess = pro
 # Plot the initial guess
 # plot(intensity_of_initial_guess, phase_of_initial_guess, "Intensity of initial guess", "Phase of initial guess")
 intensity_norm = intensity_at_sample / intensity_background
-new_field = update_and_propagation(field_at_sensor, intensity_norm, field_of_initial_guess, Z2, 3, 20, 0.001)
+new_field = update_and_propagation(intensity_norm, field_of_initial_guess, Z2, 3, 100, 0.001)

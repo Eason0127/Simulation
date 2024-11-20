@@ -26,15 +26,15 @@ def angular_spectrum_approach(complex_field, distance, wavelength, pixel_size):
 
 def propagation(initial_field, distance):
     propagated_intensity = np.zeros((resolution, resolution))
-    propagated_phase = np.zeros((resolution, resolution), dtype=complex)
+    field = np.zeros((resolution, resolution), dtype=complex)
     for wavelength in wavelengths:
         propagated_field = angular_spectrum_approach(initial_field, distance, wavelength, pixel_size)
         propagated_intensity += np.abs(propagated_field) ** 2  # Cumulative Strength
-        propagated_phase += propagated_field  # Accumulate complex fields (for phase calculation)
+        field += propagated_field  # Accumulate complex fields (for phase calculation)
     # Calculate the average phase
-    phase = np.angle(propagated_phase)
+    phase = np.angle(field)
     intensity = propagated_intensity
-    return intensity, phase, propagated_phase
+    return intensity, phase, field
 
 def plot(field, phase, title_1, title_2):
     plt.figure(figsize=(12, 6))
@@ -91,21 +91,20 @@ intensity_of_initial_guess, phase_of_initial_guess, field_of_initial_guess = pro
 # Plot the initial guess
 plot(intensity_of_initial_guess, phase_of_initial_guess, "Intensity of initial guess", "Phase of initial guess")
 
-# Update the amplitude with a weighted average:60% of the newly forward-propagated field and,40% of the measured one
-amplitude_of_hologram = np.abs(field_at_sensor)
-amplitude_of_initial_guess = np.abs(field_of_initial_guess)
-updated_amplitude = 0.6 * amplitude_of_initial_guess + 0.4 * amplitude_of_hologram
-updated_field = updated_amplitude * np.exp(1j * phase_of_initial_guess)
-
 # Forward-propagate the updated field to the sensor plane
-new_field_intensity_at_senor, new_field_phase_at_sensor, new_field_at_sensor_plane = propagation(updated_field, Z2)
+new_field_intensity_at_senor, new_field_phase_at_sensor, new_field_at_sensor_plane = propagation(field_of_initial_guess, Z2)
 
+# Update the amplitude with a weighted average:60% of the newly forward-propagated field and,40% of the measured one
+amplitude_of_hologram = np.sqrt(intensity_of_origin_hologram)
+amplitude_of_new_field = np.abs(new_field_at_sensor_plane)
+updated_amplitude = 0.6 * amplitude_of_new_field + 0.4 * amplitude_of_hologram
+updated_field = updated_amplitude * np.exp(1j * new_field_phase_at_sensor)
 
 # Plot the new field
 plot(new_field_intensity_at_senor, new_field_phase_at_sensor, "Intensity of the new hologram", "Phase of the new hologram")
 
 # back-propagate to the sample plane again
-new_field_intensity_at_sample, new_field_phase_at_sample, new_field_at_sample_plane = propagation(new_field_at_sensor_plane, -Z2)
+new_field_intensity_at_sample, new_field_phase_at_sample, new_field_at_sample_plane = propagation(updated_field, -Z2)
 
 
 # Plot the new field at sample plane
