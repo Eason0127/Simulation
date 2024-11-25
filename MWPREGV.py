@@ -88,9 +88,12 @@ def update_and_propagation(intensity_norm, initial_guess_field, distance, number
             g_k.append(gk)
             # 计算 alpha
             alpha = 0  # 初始化 alpha
-            for i in range(k, 1, -1):
-                n = (g_k[i] * g_k[i - 1]) / (g_k[i - 1] * g_k[i - 1])
-                alpha += n
+            n = 0
+            m = 0
+            for i in range(k, 0, -1):
+                n += g_k[i] * g_k[i - 1]
+                m += g_k[i - 1] * g_k[i - 1]
+            alpha = n / m
             # update the phase
             phase_new = initial_phase[k] + alpha * h_k
             initial_phase.append(phase_new)

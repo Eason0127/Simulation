@@ -11,7 +11,7 @@ pixel_size = 1.3e-6
 # Definition of the angular spectrum approach
 def angular_spectrum_approach(complex_field, distance, wavelength, pixel_size):
     k = 2 * np.pi / wavelength
-    fx = np.fft.fftfreq(resolution, d=pixel_size)
+    fx = np.fft.fftfreq(resolution, d=pixel_size) # check
     fy = np.fft.fftfreq(resolution, d=pixel_size)
     FX, FY = np.meshgrid(fx, fy)
     # Transfer function
@@ -101,7 +101,7 @@ updated_amplitude = 0.6 * amplitude_of_new_field + 0.4 * amplitude_of_hologram
 updated_field = updated_amplitude * np.exp(1j * new_field_phase_at_sensor)
 
 # Plot the new field
-plot(new_field_intensity_at_senor, new_field_phase_at_sensor, "Intensity of the new hologram", "Phase of the new hologram")
+# plot(new_field_intensity_at_senor, new_field_phase_at_sensor, "Intensity of the new hologram", "Phase of the new hologram")
 
 # back-propagate to the sample plane again
 new_field_intensity_at_sample, new_field_phase_at_sample, new_field_at_sample_plane = propagation(updated_field, -Z2)
