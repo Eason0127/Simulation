@@ -78,3 +78,6 @@ ax.set_yticks([x[0], x[-1]])
 ax.set_xlabel(r'$x, \, \mu m$')
 ax.set_ylabel(r'$y, \, \mu m$')
 plt.show()
+
+
+
