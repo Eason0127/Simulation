@@ -55,7 +55,7 @@ W, H = np.meshgrid(np.arange(0, numPixels), np.arange(0, numPixels)) # coordinat
 Mask = np.sqrt((W - Center)**2 + (H - Center)**2) <= Sample_Radius # boundaries of the object
 exit_field = np.ones((numPixels, numPixels), dtype=complex)
 exit_field[Mask] = np.exp(-0.1) * np.exp(1j * Sample_Phase)
-# plot_field(exit_field)
+plot_field(exit_field)
 
 x = np.linspace(-pixelSize * numPixels / 2, pixelSize * numPixels / 2, num = numPixels, endpoint = True)
 physicalRadius = Sample_Radius * pixelSize
@@ -65,35 +65,34 @@ df = fS / numPixels # Spacing between discrete frequency coordinates
 fx = np.arange(-fS / 2, fS / 2, step = df) # Spatial frequency, inverse microns
 FX, FY = np.meshgrid(fx, fx)
 
-hologram_field = angular_spectrum_method(exit_field, dx, 1e-4, FX, FY)
+hologram_field = angular_spectrum_method(exit_field, dx, 1e-5, FX, FY)
 
 
 # plot_field(hologram_field)
 
-# fig, ax = plt.subplots(nrows=1, ncols=1)
-# img = ax.imshow(np.abs(hologram_field)**2)
-# img.set_extent([x[0], x[-1], x[0], x[-1]])
-# cb = plt.colorbar(img)
-# cb.set_label('amplitude$^2$')
-# ax.set_xticks([x[0], x[-1]])
-# ax.set_yticks([x[0], x[-1]])
-# ax.set_xlabel(r'$x, \, \mu m$')
-# ax.set_ylabel(r'$y, \, \mu m$')
-# plt.show()
+fig, ax = plt.subplots(nrows=1, ncols=1)
+img = ax.imshow(np.abs(hologram_field)**2)
+img.set_extent([x[0], x[-1], x[0], x[-1]])
+cb = plt.colorbar(img)
+cb.set_label('amplitude$^2$')
+ax.set_xticks([x[0], x[-1]])
+ax.set_yticks([x[0], x[-1]])
+ax.set_xlabel(r'$x, \, \mu m$')
+ax.set_ylabel(r'$y, \, \mu m$')
+plt.show()
 
 # Get the background intensity
 background_field = np.ones((numPixels, numPixels), dtype=complex)
-Field_no_sample = angular_spectrum_method(background_field, dx, 1e-4, FX, FY)
+phase_Rewave = np.angle(background_field)
+Field_no_sample = angular_spectrum_method(background_field, dx, 1e-5, FX, FY)
 Intensity_background = np.abs(Field_no_sample) ** 2
-print(Intensity_background)
 
 # Normalization
 hologram_intensity = np.abs(hologram_field) ** 2
-print(hologram_intensity)
 Norm_amplitude = np.sqrt(hologram_intensity / Intensity_background)
 
 # IPR
-def IPR(Norm_amplitude, distance, k_max, convergence_threshold, support, FX, FY):
+def IPR(Norm_amplitude, distance, k_max, convergence_threshold, dx, FX, FY):
     update_phase = []
     for k in range(k_max):
         # a) sensor plane
@@ -104,11 +103,12 @@ def IPR(Norm_amplitude, distance, k_max, convergence_threshold, support, FX, FY)
             field1 = Norm_amplitude * np.exp(1j * update_phase[k - 1])
         # b) back-propagation and apply energy constraint
         field2 = angular_spectrum_method(field1, dx, -distance, FX, FY)
-        field2 = field2 * support
+        # field2 = field2 * support
         phase_field2 = np.angle(field2)
         amp_field2 = np.abs(field2)
         mask = amp_field2 > 1
         field2[mask] = np.exp(1j * phase_field2[mask])
+
         # c) forward propagation and update amplitude
         field3 = angular_spectrum_method(field2, dx, distance, FX, FY)
         phase_field3 = np.angle(field3)
@@ -117,19 +117,18 @@ def IPR(Norm_amplitude, distance, k_max, convergence_threshold, support, FX, FY)
         if k > 0:  # 从第 1 次迭代开始比较相位差
             phase_diff = np.abs(update_phase[k] - update_phase[k - 1])  # 计算相位差
             max_diff = np.mean(phase_diff)  # 或 np.mean(phase_diff) 查看全局变化
-            print(f"the {k} iteration, max diff {max_diff}")
+            print(f"the {k} iteration, mean diff {max_diff}")
             if max_diff < convergence_threshold:  # 如果相位变化小于阈值，认为已收敛
                 print(f"Converged at iteration {k}")
-                field_final = Norm_amplitude * np.exp(1j * phase_field3)
-                return field_final
+                # field_final = Norm_amplitude * np.exp(1j * phase_field3)
+                return field2
 
 # find the image
-support_mask = np.zeros_like(Norm_amplitude)
-support_mask[Mask] = 1 * np.exp(-0.1)
-field_ite = IPR(Norm_amplitude, 1e-4, 1000, 1e-4, support_mask, FX, FY)
+
+field_ite = IPR(Norm_amplitude, 1e-5, 10000, 1e-6, dx, FX, FY)
 plot_field(field_ite)
-image_field = angular_spectrum_method(field_ite, dx, -1e-4, FX, FY)
-plot_field(image_field)
+# image_field = angular_spectrum_method(field_ite, dx, -1e-4, FX, FY)
+# plot_field(image_field)
 
 
 

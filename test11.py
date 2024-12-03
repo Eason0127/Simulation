@@ -1,7 +1,50 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
+from PIL import Image
 
+
+def load_hologram(filename, shape=None):
+    """
+    Load hologram data from a file and reshape it if a shape is provided.
+    Supports binary and image files.
+    """
+    if filename.endswith('.bin'):
+        # Load binary file
+        data = np.fromfile(filename, dtype=np.float32)
+        print(f"Loaded binary data size: {data.size}")
+    elif filename.endswith(('.jpg', '.png', '.jpeg')):
+        # Load image file
+        image = Image.open(filename).convert('L')
+        data = np.array(image, dtype=np.float32)
+        print(f"Loaded image data size: {data.size}")
+    else:
+        raise ValueError("Unsupported file format. Use .bin or image formats like .jpg, .png")
+
+    if shape is not None:
+        # Ensure the provided shape is compatible with the data size
+        if np.prod(shape) != data.size:
+            raise ValueError(f"Cannot reshape data of size {data.size} into shape {shape}")
+        hologram = data.reshape(shape)
+    else:
+        # Try to infer square shape if shape is not provided
+        size = int(np.sqrt(data.size))
+        if size * size == data.size:
+            hologram = data.reshape((size, size))
+        else:
+            raise ValueError("Data size is not suitable for reshaping into a square.")
+
+    return hologram
+
+def initialize_field(hologram):
+    """
+    Initialize the complex-valued field at the detector plane.
+    """
+    measured = np.sqrt(hologram)  # Calculate amplitude
+    measured = (measured - measured.min()) / (measured.max() - measured.min())  # Normalize to range [0, 1]
+    phase = np.zeros_like(hologram)  # Initial phase is zero
+    field_detector = measured * np.exp(1j * phase)
+    return measured, field_detector
 
 def plot_field(field, title="Complex Field", cmap="viridis"):
     # Calculate amplitude and phase
@@ -44,35 +87,22 @@ def angular_spectrum_method(field, area, distance, W, H):
     return gt_prime
 
 
-numPixels = 512
+
+numPixels = 500
+shape = (numPixels, numPixels)
 pixelSize = 1e-7 # unit: meter
 area = numPixels * pixelSize
-# Define the sample
-Sample_Radius = 25  # pixels * size
-Sample_Phase = 3
 x = np.arange(numPixels) - numPixels / 2 - 1
 y = np.arange(numPixels) - numPixels / 2 - 1
 W, H = np.meshgrid(x, y)
-print(W, H)
+
 
 # Define the field after sample
-Mask = np.sqrt(W ** 2 + H ** 2) <= Sample_Radius # boundaries of the object
-incident_field = np.zeros((numPixels, numPixels), dtype=complex)
-incident_field[Mask] = np.exp(-1.6) * np.exp(1j * Sample_Phase)
-plot_field(incident_field)
+hologram = load_hologram('b_hologram.jpg', shape)
+plot_field(hologram)
+Measured_amp, field_detector = initialize_field(hologram)
 
 
-hologram_field = angular_spectrum_method(incident_field, area, 1e-4, W, H)
-hologram_amplitude = np.abs(hologram_field)
-plot_field(hologram_field)
-
-
-# background_field = np.ones((numPixels, numPixels), dtype=complex)
-# Field_no_sample = angular_spectrum_method(background_field, area, 1e-4, W, H)
-# Intensity_background = np.abs(Field_no_sample) ** 2
-# # Normalization
-# hologram_intensity = np.abs(hologram_field) ** 2
-# Norm_amplitude = np.sqrt(hologram_intensity / Intensity_background)
 
 
 # IPR
@@ -126,6 +156,6 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, 1e-4, 10000, 1e-4, area, W, H)
+field_ite = IPR(Measured_amp, 0.05, 10000, 1e-4, area, W, H)
 plot_field(field_ite)
 
