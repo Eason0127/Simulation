@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
 
-
+# Test paper's sample
 def plot_field(field, title="Complex Field", cmap="viridis"):
     # Calculate amplitude and phase
     amplitude = np.abs(field)
@@ -83,7 +83,6 @@ def angular_spectrum_method(field, area, distance, W, H):
 
 numPixels = 500
 pixelSize = 1e-6 # unit: meter
-# area = numPixels * pixelSize
 z2 = 0.001
 s = 5e-4
 # Define the sensor grid

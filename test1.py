@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
+from PIL import Image
 
-
+# Obey the Shannon criteria
 def plot_field(field, title="Complex Field", cmap="viridis"):
     # Calculate amplitude and phase
     amplitude = np.abs(field)
@@ -30,13 +31,22 @@ def plot_field(field, title="Complex Field", cmap="viridis"):
     # Show plots
     plt.tight_layout()
     plt.show()
+def load_and_normalize_image(filepath):
+    # Load the image
+    image = Image.open(filepath).convert('L')  # Convert to grayscale
+    # Convert image to a NumPy array
+    grayscale_data = np.array(image, dtype=np.float32)
+    # Normalize the grayscale data to [0, 1]
+    normalized_data = (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
+    return normalized_data
 
 def Transfer_function(W, H, distance, wavelength, area):
     FX = W / area
     FY = H / area
     square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
+    valid_mask = (wavelength ** 2 * FX ** 2 + wavelength ** 2 * FY ** 2) <= 1
+    square_root[~valid_mask] = 0
     temp = np.exp(1j * 2 * np.pi * distance / wavelength * square_root)
-    temp[np.isnan(temp)] = 0
     return temp
 def angular_spectrum_method(field, area, distance, W, H):
     GT = fftshift(fft2(ifftshift(field)))
@@ -44,26 +54,29 @@ def angular_spectrum_method(field, area, distance, W, H):
     return gt_prime
 
 
-numPixels = 512
-pixelSize = 1e-6 # unit: meter
+numPixels = 1024
+pixelSize = 1e-7 # unit: meter
 area = numPixels * pixelSize
-# Define the sample
-Sample_Radius = 50  # pixels * size
-Sample_Phase = 3
+z = 0.001
+
+# Coordination of sensor
 x = np.arange(numPixels) - numPixels / 2 - 1
 y = np.arange(numPixels) - numPixels / 2 - 1
-d = x[1] - x[0]
 W, H = np.meshgrid(x, y)
-print(W, H)
+
 
 # Define the field after sample
-Mask = np.sqrt(W ** 2 + H ** 2) <= Sample_Radius # boundaries of the object
-incident_field = np.zeros((numPixels, numPixels), dtype=complex)
-incident_field[Mask] = np.exp(1j * Sample_Phase)
-plot_field(incident_field)
+object = load_and_normalize_image('circle.png')
+plot_field(object)
+am = np.exp(-1.6 * object)
+ph0 = 3
+ph = ph0 * object
+field_after_object = am * np.exp(1j * ph)
+plot_field(field_after_object)
 
 
-hologram_field = angular_spectrum_method(incident_field, area, 1e-3, W, H)
+
+hologram_field = angular_spectrum_method(field_after_object, area, z, W, H)
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 
@@ -77,7 +90,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
     for k in range(k_max):
         # a) sensor plane
         if k == 0:
-            phase0= np.zeros(Measured_amplitude.shape)
+            phase0 = np.zeros(Measured_amplitude.shape)
             field1 = Measured_amplitude * np.exp(1j * phase0)
         else:
             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
@@ -91,13 +104,13 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
         phase_field2[abso < 0] = 0
         amp_field2 = np.exp(-abso)
         field22 = amp_field2 * np.exp(1j * phase_field2)
-        last_field = field22
 
         # c) forward propagation and update amplitude
         field3 = angular_spectrum_method(field22, area, distance, W, H)
         amp_field3 = np.abs(field3)
         phase_field3 = np.angle(field3)
         update_phase.append(phase_field3)
+        last_field = field3
         # tell if next iteration is needed
         if k > 0:
             amp_diff = amp_field3 - Measured_amplitude
@@ -107,10 +120,10 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
             if rms_error < convergence_threshold:  # 小于阈值，认为已收敛
                 print(f"Converged at iteration {k}")
                 # field_final = Norm_amplitude * np.exp(1j * phase_field3)
-                return field22
+                return last_field
     # Plot RMS error curve after the iteration ends
     plt.figure(figsize=(8, 6))
-    plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o')
+    plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o', linewidth=0.8)
     plt.title("RMS Error Over Iterations")
     plt.xlabel("Iteration")
     plt.ylabel("RMS Error")
@@ -120,6 +133,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, 3e-4, 1800, 1e-30, area, W, H)
-plot_field(field_ite)
+field_ite = IPR(hologram_amplitude, z, 500, 1e-20, area, W, H)
+IPR_object = angular_spectrum_method(field_ite, area, -z, W, H)
+plot_field(IPR_object)
 
