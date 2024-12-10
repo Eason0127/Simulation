@@ -36,43 +36,37 @@ def Transfer_function(W, H, distance, wavelength, area):
     FY = H / area
     square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
     temp = np.exp(1j * 2 * np.pi * distance / wavelength * square_root)
-    temp[np.isnan(temp)] = 0  # replace nan's with zeros
+    temp[np.isnan(temp)] = 0
     return temp
 def angular_spectrum_method(field, area, distance, W, H):
-    GT = ifftshift(fft2(fftshift(field)))
+    GT = fftshift(fft2(ifftshift(field)))
     gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(W, H, distance, 532e-9, area))))
     return gt_prime
 
 
 numPixels = 512
-pixelSize = 1e-7 # unit: meter
+pixelSize = 1e-6 # unit: meter
 area = numPixels * pixelSize
 # Define the sample
-Sample_Radius = 25  # pixels * size
+Sample_Radius = 50  # pixels * size
 Sample_Phase = 3
 x = np.arange(numPixels) - numPixels / 2 - 1
 y = np.arange(numPixels) - numPixels / 2 - 1
+d = x[1] - x[0]
 W, H = np.meshgrid(x, y)
 print(W, H)
 
 # Define the field after sample
 Mask = np.sqrt(W ** 2 + H ** 2) <= Sample_Radius # boundaries of the object
 incident_field = np.zeros((numPixels, numPixels), dtype=complex)
-incident_field[Mask] = np.exp(-1.6) * np.exp(1j * Sample_Phase)
+incident_field[Mask] = np.exp(1j * Sample_Phase)
 plot_field(incident_field)
 
 
-hologram_field = angular_spectrum_method(incident_field, area, 1e-4, W, H)
+hologram_field = angular_spectrum_method(incident_field, area, 1e-3, W, H)
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 
-
-# background_field = np.ones((numPixels, numPixels), dtype=complex)
-# Field_no_sample = angular_spectrum_method(background_field, area, 1e-4, W, H)
-# Intensity_background = np.abs(Field_no_sample) ** 2
-# # Normalization
-# hologram_intensity = np.abs(hologram_field) ** 2
-# Norm_amplitude = np.sqrt(hologram_intensity / Intensity_background)
 
 
 # IPR
@@ -126,6 +120,6 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, 1e-4, 10000, 1e-4, area, W, H)
+field_ite = IPR(hologram_amplitude, 3e-4, 1800, 1e-30, area, W, H)
 plot_field(field_ite)
 

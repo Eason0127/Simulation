@@ -37,9 +37,9 @@ def Transfer_function(FX, FY, z, wavelength):
     temp[np.isnan(temp)] = 0  # replace nan's with zeros
     return temp
 def angular_spectrum_method(field, sampling_distance, distance, FX, FY):
-    GT = ifftshift(fft2(fftshift(field))) * sampling_distance ** 2
+    GT = ifftshift(fft2(fftshift(field)))
     # * dx ** 2 :Make the discrete Fourier transform result numerically close to the continuous Fourier transform result and Maintain power consistency
-    gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(FX, FY, distance, 532e-9)))) / sampling_distance ** 2
+    gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(FX, FY, distance, 532e-9))))
     return gt_prime
 
 numPixels = 512
