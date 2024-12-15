@@ -83,7 +83,7 @@ def angular_spectrum_method(field, area, distance, W, H):
 
 numPixels = 1024
 pixelSize = 4e-8 # unit: meter
-z2 = 0.001
+z2 = 0.0001
 area = numPixels * pixelSize
 # Define the sensor grid
 x = np.arange(numPixels) - numPixels / 2 - 1
@@ -158,7 +158,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z2, 1500, 1.5e-4, area, W, H)
+field_ite = IPR(hologram_amplitude, z2, 1000, 1.5e-4, area, W, H)
 IPR_object = angular_spectrum_method(field_ite, area, -z2, W, H)
 plot_field(IPR_object)
 

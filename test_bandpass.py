@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
-from scipy.ndimage import gaussian_filter
 
 # Obey the Shannon criteria
 def plot_field(field, title="Complex Field", cmap="viridis"):
@@ -36,12 +35,6 @@ def load_and_normalize_image(filepath):
     # Normalize the grayscale data to [0, 1]
     normalized_data = (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
     return normalized_data
-def apply_gaussian_window(field, W, H, area, sigma=1.0):
-    # Compute Gaussian weights
-    FX = W / area
-    FY = H / area
-    gaussian_window = np.exp(-(FX**2 + FY**2) / (2 * sigma**2))
-    return field * gaussian_window
 
 def band_pass_filter(W, H, area, low_cutoff=None, high_cutoff=None):
     FX = W / area
@@ -73,6 +66,10 @@ def Transfer_function(W, H, distance, wavelength, area):
     temp = np.exp(1j * 2 * np.pi * distance / wavelength * square_root)
     return temp
 
+def angular_spectrum_method_for_hologram(field, area, distance, W, H):
+    GT = fftshift(fft2(ifftshift(field)))
+    gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(W, H, distance, 532e-9, area))))
+    return gt_prime
 
 def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=None, high_cutoff=None, sigma=None):
     # Perform Fourier Transform
@@ -84,9 +81,6 @@ def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=
     # Apply band-pass filter
     band_pass_mask = band_pass_filter(W, H, area, low_cutoff, high_cutoff)
     GT_filtered = GT_filtered * band_pass_mask
-    # Optionally apply Gaussian window in frequency domain
-    if sigma is not None:
-        GT_filtered = apply_gaussian_window(GT_filtered, W, H, area, sigma=sigma)
     # Perform Inverse Fourier Transform
     gt_prime = fftshift(ifft2(ifftshift(GT_filtered)))
     return gt_prime
@@ -97,7 +91,7 @@ pixelSize = 1e-7 # unit: meter
 area = numPixels * pixelSize
 z = 0.001
 max_frq = 1 / 532e-9
-min_frq = 0
+min_frq = 1/ (4 * 532e-9)
 
 # Coordination of sensor
 x = np.arange(numPixels) - numPixels / 2 - 1
@@ -117,7 +111,7 @@ plot_field(field_after_object)
 
 
 # hologram
-hologram_field = angular_spectrum_method(field_after_object, area, z, W, H, wavelength, min_frq, max_frq)
+hologram_field = angular_spectrum_method_for_hologram(field_after_object, area, z, W, H)
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 
