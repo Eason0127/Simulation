@@ -92,10 +92,10 @@ def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=
     return gt_prime
 
 wavelength = 532e-9
-numPixels = 1024
-pixelSize = 1e-7 # unit: meter
+numPixels = 500
+pixelSize = 4e-6 # unit: meter
 area = numPixels * pixelSize
-z = 0.001
+z = 0.05
 max_frq = 1 / 532e-9
 min_frq = 0
 
@@ -106,7 +106,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('circle.png')
+object = load_and_normalize_image('a_object.jpg')
 plot_field(object)
 m1 = W ** 2 + H ** 2 <= 2500
 am = np.exp(-1.6 * object)

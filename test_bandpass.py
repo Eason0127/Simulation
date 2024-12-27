@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
+from scipy.ndimage import gaussian_filter
+
+# 是test_band的改版
 
 # Obey the Shannon criteria
 def plot_field(field, title="Complex Field", cmap="viridis"):
@@ -27,14 +30,15 @@ def plot_field(field, title="Complex Field", cmap="viridis"):
     # Show plots
     plt.tight_layout()
     plt.show()
-def load_and_normalize_image(filepath):
+def load_and_normalize_image(filepath, sigma):
     # Load the image
     image = Image.open(filepath).convert('L')  # Convert to grayscale
     # Convert image to a NumPy array
     grayscale_data = np.array(image, dtype=np.float32)
     # Normalize the grayscale data to [0, 1]
     normalized_data = (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
-    return normalized_data
+    smoothed_data = gaussian_filter(normalized_data, sigma=sigma)
+    return smoothed_data
 
 def band_pass_filter(W, H, area, low_cutoff=None, high_cutoff=None):
     FX = W / area
@@ -51,8 +55,6 @@ def band_pass_filter(W, H, area, low_cutoff=None, high_cutoff=None):
         low_pass_mask = spatial_frequencies <= high_cutoff
         band_pass_mask &= low_pass_mask
     return band_pass_mask
-
-
 
 def Transfer_function(W, H, distance, wavelength, area):
     # Calculate spatial frequencies
@@ -71,7 +73,7 @@ def angular_spectrum_method_for_hologram(field, area, distance, W, H):
     gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(W, H, distance, 532e-9, area))))
     return gt_prime
 
-def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=None, high_cutoff=None, sigma=None):
+def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=None, high_cutoff=None):
     # Perform Fourier Transform
     GT = fftshift(fft2(ifftshift(field)))
     # Compute transfer function
@@ -90,8 +92,8 @@ numPixels = 1024
 pixelSize = 1e-7 # unit: meter
 area = numPixels * pixelSize
 z = 0.001
-max_frq = 1 / 532e-9
-min_frq = 1/ (4 * 532e-9)
+max_frq = 1 / wavelength
+min_frq = 0
 
 # Coordination of sensor
 x = np.arange(numPixels) - numPixels / 2 - 1
@@ -100,9 +102,8 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('circle.png')
+object = load_and_normalize_image('circle.png', 2)
 plot_field(object)
-m1 = W ** 2 + H ** 2 <= 2500
 am = np.exp(-1.6 * object)
 ph0 = 3
 ph = ph0 * object
@@ -112,9 +113,10 @@ plot_field(field_after_object)
 
 # hologram
 hologram_field = angular_spectrum_method_for_hologram(field_after_object, area, z, W, H)
+output_filename = "hologram.png"
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
-
+plt.imsave(output_filename, hologram_field, cmap="gray")
 
 
 # IPR
@@ -158,7 +160,7 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
                 return last_field
     # Plot RMS error curve after the iteration ends
     plt.figure(figsize=(8, 6))
-    plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o', linewidth=0.8)
+    plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o', linewidth=0.1)
     plt.title("RMS Error Over Iterations")
     plt.xlabel("Iteration")
     plt.ylabel("RMS Error")
@@ -169,6 +171,6 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
 # find the image
 
 field_ite = IPR(hologram_amplitude, z, wavelength, 1000, 1e-20, area, W, H, min_frq, max_frq)
-IPR_object = angular_spectrum_method(field_ite, area, -z, W, H, wavelength, min_frq, max_frq)
+IPR_object = angular_spectrum_method_for_hologram(field_ite, area, -z, W, H)
 plot_field(IPR_object)
 
