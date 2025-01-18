@@ -105,7 +105,10 @@ y = np.arange(numPixels) - numPixels / 2 - 1
 W, H = np.meshgrid(x, y)
 
 # hologram
-hologram_amplitude = np.sqrt(load_and_normalize_image('pic/b_hologram.jpg'))
+hologram_field = load_and_normalize_image('pic/b_hologram.jpg')
+print(hologram_field)
+hologram_amplitude = np.sqrt(hologram_field)
+print(hologram_amplitude)
 plot_field(hologram_amplitude)
 
 
@@ -115,7 +118,7 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
     update_phase = []
     last_field = None
     rms_errors = []  # Store RMS errors for plotting
-    noise_iterations = {100, 500, 800}  # Iterations to add random noise
+    noise_iterations = {250}  # Iterations to add random noise
     for k in range(k_max):
         # a) sensor plane
         if k == 0:
@@ -165,7 +168,7 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z, wavelength, 1000, 1e-20, area, W, H, min_frq, max_frq)
+field_ite = IPR(hologram_amplitude, z, wavelength, 500, 1e-20, area, W, H, min_frq, max_frq)
 IPR_object = angular_spectrum_method(field_ite, area, -z, W, H, wavelength, min_frq, max_frq)
 plot_field(IPR_object)
 
