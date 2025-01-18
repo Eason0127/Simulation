@@ -102,7 +102,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('circle.png', 2)
+object = load_and_normalize_image('pic/circle.png', 2)
 plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3
@@ -113,7 +113,7 @@ plot_field(field_after_object)
 
 # hologram
 hologram_field = angular_spectrum_method_for_hologram(field_after_object, area, z, W, H)
-output_filename = "hologram.png"
+output_filename = "pic/hologram.png"
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 plt.imsave(output_filename, hologram_field, cmap="gray")

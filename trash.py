@@ -1,180 +1,41 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy.fft import fft2, ifft2, fftshift, ifftshift
-from PIL import Image
-from scipy.ndimage import gaussian_filter
+from skimage.draw import polygon, disk
 
-# 是test_band的改版
+# Initialize image size
+image_size = 1024
+image = np.zeros((image_size, image_size), dtype=np.float32)
 
-# Obey the Shannon criteria
-def plot_field(field, title="Complex Field", cmap="viridis"):
-    # Calculate amplitude and phase
-    amplitude = np.abs(field)
-    phase = np.angle(field)
-    # Normalize phase to range [0, 2π]
-    phase = (phase + 2 * np.pi) % (2 * np.pi)
-    # Create a figure
-    plt.figure(figsize=(12, 6))
-    # Plot amplitude
-    plt.subplot(1, 2, 1)
-    plt.imshow(amplitude, cmap=cmap)
-    plt.colorbar(label="Amplitude")
-    plt.title(f"{title} - Amplitude")
-    plt.axis('off')  # Turn off axis
-    # Plot phase
-    plt.subplot(1, 2, 2)
-    plt.imshow(phase, cmap="twilight", vmin=0, vmax=2 * np.pi)
-    plt.colorbar(label="Phase (radians)")
-    plt.title(f"{title} - Phase")
-    plt.axis('off')  # Turn off axis
-    # Show plots
-    plt.tight_layout()
-    plt.show()
-def load_and_normalize_image(filepath, sigma):
-    # Load the image
-    image = Image.open(filepath).convert('L')  # Convert to grayscale
-    # Convert image to a NumPy array
-    grayscale_data = np.array(image, dtype=np.float32)
-    # Normalize the grayscale data to [0, 1]
-    normalized_data = (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
-    smoothed_data = gaussian_filter(normalized_data, sigma=sigma)
-    return smoothed_data
+# Define tumor boundary as an irregular polygon
+tumor_boundary_x = [300, 350, 400, 450, 480, 460, 420, 360, 310, 280]
+tumor_boundary_y = [400, 350, 340, 360, 410, 460, 500, 520, 490, 440]
+polygon_rr, polygon_cc = polygon(tumor_boundary_y, tumor_boundary_x, shape=image.shape)
 
-def band_pass_filter(W, H, area, low_cutoff=None, high_cutoff=None):
-    FX = W / area
-    FY = H / area
-    spatial_frequencies = np.sqrt(FX**2 + FY**2)  # Radial spatial frequencies
-    # Initialize mask
-    band_pass_mask = np.ones_like(spatial_frequencies, dtype=bool)
-    # Apply high-pass filter if specified
-    if low_cutoff is not None:
-        high_pass_mask = spatial_frequencies >= low_cutoff
-        band_pass_mask &= high_pass_mask
-    # Apply low-pass filter if specified
-    if high_cutoff is not None:
-        low_pass_mask = spatial_frequencies <= high_cutoff
-        band_pass_mask &= low_pass_mask
-    return band_pass_mask
+# Assign intensity for the tumor region
+image[polygon_rr, polygon_cc] = 0.6  # Tumor body intensity
 
-def Transfer_function(W, H, distance, wavelength, area):
-    # Calculate spatial frequencies
-    FX = W / area
-    FY = H / area
-    # Calculate the square root for the transfer function
-    square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
-    valid_mask = (wavelength ** 2 * FX ** 2 + wavelength ** 2 * FY ** 2) <= 1
-    square_root[~valid_mask] = 0
-    # Apply the transfer function formula
-    temp = np.exp(1j * 2 * np.pi * distance / wavelength * square_root)
-    return temp
+# Add smaller irregular shapes to represent cells inside the tumor
+num_cells = 50  # Number of cells
+cell_min_radius = 5
+cell_max_radius = 15
+for _ in range(num_cells):
+    # Randomly place cells inside the tumor boundary
+    x_cell = np.random.randint(min(tumor_boundary_x), max(tumor_boundary_x))
+    y_cell = np.random.randint(min(tumor_boundary_y), max(tumor_boundary_y))
 
-def angular_spectrum_method_for_hologram(field, area, distance, W, H):
-    GT = fftshift(fft2(ifftshift(field)))
-    gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(W, H, distance, 532e-9, area))))
-    return gt_prime
+    # Ensure the cell center is inside the tumor
+    if image[y_cell, x_cell] == 0.6:
+        # Randomize cell size and intensity
+        cell_radius = np.random.randint(cell_min_radius, cell_max_radius)
+        cell_intensity = np.random.uniform(0.7, 0.9)
 
-def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=None, high_cutoff=None):
-    # Perform Fourier Transform
-    GT = fftshift(fft2(ifftshift(field)))
-    # Compute transfer function
-    transfer_function = Transfer_function(W, H, distance, wavelength, area)
-    # Apply transfer function
-    GT_filtered = GT * transfer_function
-    # Apply band-pass filter
-    band_pass_mask = band_pass_filter(W, H, area, low_cutoff, high_cutoff)
-    GT_filtered = GT_filtered * band_pass_mask
-    # Perform Inverse Fourier Transform
-    gt_prime = fftshift(ifft2(ifftshift(GT_filtered)))
-    return gt_prime
+        # Draw the cell
+        cell_rr, cell_cc = disk((y_cell, x_cell), cell_radius, shape=image.shape)
+        image[cell_rr, cell_cc] = cell_intensity
 
-wavelength = 532e-9
-numPixels = 1024
-pixelSize = 1e-7 # unit: meter
-area = numPixels * pixelSize
-z = 0.001
-max_frq = 1 / wavelength
-min_frq = 0
-
-# Coordination of sensor
-x = np.arange(numPixels) - numPixels / 2 - 1
-y = np.arange(numPixels) - numPixels / 2 - 1
-W, H = np.meshgrid(x, y)
-
-
-# Define the field after sample
-object = load_and_normalize_image('circle.png', 2)
-plot_field(object)
-am = np.exp(-1.6 * object)
-ph0 = 3
-ph = ph0 * object
-field_after_object = am * np.exp(1j * ph)
-plot_field(field_after_object)
-
-
-# hologram
-hologram_field = angular_spectrum_method_for_hologram(field_after_object, area, z, W, H)
-# 归一化处理并保存
-hologram_amplitude = np.abs(hologram_field) ** 2
-hologram_amplitude_normalized = (hologram_amplitude - hologram_amplitude.min()) / (hologram_amplitude.max() - hologram_amplitude.min())
-
-# 保存为图像
-output_filename = "hologram.png"
-plt.imsave(output_filename, hologram_amplitude_normalized, cmap="gray")
-
-
-
-# IPR
-def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, area, W, H, min_frq, max_frq):
-    update_phase = []
-    last_field = None
-    rms_errors = []  # Store RMS errors for plotting
-    for k in range(k_max):
-        # a) sensor plane
-        if k == 0:
-            phase0 = np.zeros(Measured_amplitude.shape)
-            field1 = Measured_amplitude * np.exp(1j * phase0)
-        else:
-            field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-        # b) back-propagation and apply energy constraint
-        field2 = angular_spectrum_method(field1, area, -distance, W, H, wavelength, min_frq, max_frq)
-        phase_field2 = np.angle(field2) # phase
-        amp_field2 = np.abs(field2) # amplitude
-        abso = -np.log(amp_field2)
-        # Apply constraints
-        abso[abso < 0] = 0
-        phase_field2[abso < 0] = 0
-        amp_field2 = np.exp(-abso)
-        field22 = amp_field2 * np.exp(1j * phase_field2)
-
-        # c) forward propagation and update amplitude
-        field3 = angular_spectrum_method(field22, area, distance, W, H, wavelength, min_frq, max_frq)
-        amp_field3 = np.abs(field3)
-        phase_field3 = np.angle(field3)
-        update_phase.append(phase_field3)
-        last_field = field3
-        # tell if next iteration is needed
-        if k > 0:
-            amp_diff = amp_field3 - Measured_amplitude
-            rms_error = np.sqrt(np.mean(amp_diff ** 2))
-            rms_errors.append(rms_error)
-            print(f"the {k} iteration, Error RMS {rms_error}")
-            if rms_error < convergence_threshold:  # 小于阈值，认为已收敛
-                print(f"Converged at iteration {k}")
-                # field_final = Norm_amplitude * np.exp(1j * phase_field3)
-                return last_field
-    # Plot RMS error curve after the iteration ends
-    plt.figure(figsize=(8, 6))
-    plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o', linewidth=0.1)
-    plt.title("RMS Error Over Iterations")
-    plt.xlabel("Iteration")
-    plt.ylabel("RMS Error")
-    plt.grid()
-    plt.show()
-    return last_field
-
-# find the image
-
-field_ite = IPR(hologram_amplitude, z, wavelength, 1000, 1e-20, area, W, H, min_frq, max_frq)
-IPR_object = angular_spectrum_method_for_hologram(field_ite, area, -z, W, H)
-plot_field(IPR_object)
-
+# Display and save the image
+plt.imshow(image, cmap="gray")
+plt.axis('off')
+plt.tight_layout()
+plt.savefig("tumor_sample.png", bbox_inches='tight', pad_inches=0)
+plt.show()

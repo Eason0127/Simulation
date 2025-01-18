@@ -4,7 +4,7 @@ from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 
-# Obey the Shannon criteria
+# Obey the Shannon criteria and with highpass/lowpass filter
 def plot_field(field, title="Complex Field", cmap="viridis"):
     # Calculate amplitude and phase
     amplitude = np.abs(field)
@@ -106,7 +106,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('a_object.jpg')
+object = load_and_normalize_image('pic/a_object.jpg')
 plot_field(object)
 m1 = W ** 2 + H ** 2 <= 2500
 am = np.exp(-1.6 * object)
