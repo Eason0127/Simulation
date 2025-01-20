@@ -82,8 +82,6 @@ plot_field(field_after_object)
 
 # acquire hologram
 hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
-mask = W > H
-hologram_field[mask] = 0
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 
@@ -102,9 +100,9 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
             field1 = Measured_amplitude * np.exp(1j * phase0)
         else:
             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-            # if k in noise_iterations:
-            #     random_noise = 0.1 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
-            #     field1 += random_noise
+            if k < 1000:
+                random_noise = 0.05 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
+                field1 += random_noise
 
         # b) back-propagation and apply energy constraint
         field2 = angular_spectrum_method(field1, area, -distance, W, H)
@@ -117,9 +115,9 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
         amp_field2 = np.exp(-abso)
         field22 = amp_field2 * np.exp(1j * phase_field2)
         # Reduced support
-        if k in specific_iterations:
-            mask = (W < H) & (W > 0)
-            field22[mask] = 0
+        # if k in specific_iterations:
+        #     mask = (W < H) & (W > 0)
+        #     field22[mask] = 0
 
         # c) forward propagation and update amplitude
         field3 = angular_spectrum_method(field22, area, distance, W, H)
