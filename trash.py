@@ -60,7 +60,7 @@ def angular_spectrum_method(field, area, distance, W, H):
     return gt_prime
 
 
-numPixels = 1024
+numPixels = 500
 pixelSize = 1e-7 # unit: meter
 z2 = 0.001
 area = numPixels * pixelSize
@@ -71,7 +71,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('pic/circle.png')
+object = load_and_normalize_image('pic/a_object.jpg')
 plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3
@@ -82,6 +82,8 @@ plot_field(field_after_object)
 
 # acquire hologram
 hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
+mask = W > H
+hologram_field[mask] = 0
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 

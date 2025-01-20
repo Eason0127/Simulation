@@ -103,6 +103,7 @@ plot_field(field_after_object)
 
 # acquire hologram
 hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
+hologram_field[W < H] = 0
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 
