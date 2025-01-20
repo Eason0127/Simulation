@@ -28,20 +28,14 @@ def plot_field(field, title="Complex Field", cmap="viridis"):
     # Show plots
     plt.tight_layout()
     plt.show()
-
-
-def load_image(filepath, normalize=True, to_grayscale=True):
+def load_and_normalize_image(filepath):
     # Load the image
-    image = Image.open(filepath)
-    # Convert to grayscale if required
-    if to_grayscale:
-        image = image.convert('L')  # 'L' mode is 8-bit grayscale
-    # Convert to NumPy array
-    image_array = np.array(image, dtype=np.float32)
-    # Normalize the pixel values to the range [0, 1] if required
-    if normalize:
-        image_array = (image_array - image_array.min()) / (image_array.max() - image_array.min())
-    return image_array
+    image = Image.open(filepath).convert('L')  # Convert to grayscale
+    # Convert image to a NumPy array
+    grayscale_data = np.array(image, dtype=np.float32)
+    # Normalize the grayscale data to [0, 1]
+    normalized_data = (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
+    return normalized_data
 def apply_gaussian_window(field, W, H, area, sigma=1.0):
     # Compute Gaussian weights
     FX = W / area
@@ -99,9 +93,9 @@ def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=
 
 wavelength = 532e-9
 numPixels = 500
-pixelSize = 4e-6 # unit: meter
+pixelSize = 1e-7 # unit: meter
 area = numPixels * pixelSize
-z = 0.05
+z = 0.001
 max_frq = 1 / 532e-9
 min_frq = 0
 
@@ -110,71 +104,83 @@ x = np.arange(numPixels) - numPixels / 2 - 1
 y = np.arange(numPixels) - numPixels / 2 - 1
 W, H = np.meshgrid(x, y)
 
+
+# Define the field after sample
+object = load_and_normalize_image('pic/a_object.jpg')
+plot_field(object)
+m1 = W ** 2 + H ** 2 <= 2500
+am = np.exp(-1.6 * object)
+ph0 = 3
+ph = ph0 * object
+field_after_object = am * np.exp(1j * ph)
+plot_field(field_after_object)
+
+
 # hologram
-hologram_field = load_image('pic/b_hologram.jpg')
+hologram_field = angular_spectrum_method(field_after_object, area, z, W, H, wavelength, min_frq, max_frq)
 print(hologram_field)
-hologram_amplitude = np.sqrt(hologram_field)
+hologram_amplitude = np.abs(hologram_field)
 print(hologram_amplitude)
-plot_field(hologram_amplitude)
+plot_field(hologram_field)
 
 
 
 # IPR
-# def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, area, W, H, min_frq, max_frq):
-#     update_phase = []
-#     last_field = None
-#     rms_errors = []  # Store RMS errors for plotting
-#     noise_iterations = {250}  # Iterations to add random noise
-#     for k in range(k_max):
-#         # a) sensor plane
-#         if k == 0:
-#             phase0 = np.zeros(Measured_amplitude.shape)
-#             field1 = Measured_amplitude * np.exp(1j * phase0)
-#         else:
-#             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-#             if k in noise_iterations:
-#                 random_noise = 0.1 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
-#                 field1 += random_noise
-#         # b) back-propagation and apply energy constraint
-#         field2 = angular_spectrum_method(field1, area, -distance, W, H, wavelength, min_frq, max_frq)
-#         phase_field2 = np.angle(field2) # phase
-#         amp_field2 = np.abs(field2) # amplitude
-#         abso = -np.log(amp_field2)
-#         # Apply constraints
-#         abso[abso < 0] = 0
-#         phase_field2[abso < 0] = 0
-#         amp_field2 = np.exp(-abso)
-#         field22 = amp_field2 * np.exp(1j * phase_field2)
-#
-#         # c) forward propagation and update amplitude
-#         field3 = angular_spectrum_method(field22, area, distance, W, H, wavelength, min_frq, max_frq)
-#         amp_field3 = np.abs(field3)
-#         phase_field3 = np.angle(field3)
-#         update_phase.append(phase_field3)
-#         last_field = field3
-#         # tell if next iteration is needed
-#         if k > 0:
-#             amp_diff = amp_field3 - Measured_amplitude
-#             rms_error = np.sqrt(np.mean(amp_diff ** 2))
-#             rms_errors.append(rms_error)
-#             print(f"the {k} iteration, Error RMS {rms_error}")
-#             if rms_error < convergence_threshold:  # 小于阈值，认为已收敛
-#                 print(f"Converged at iteration {k}")
-#                 # field_final = Norm_amplitude * np.exp(1j * phase_field3)
-#                 return last_field
-#     # Plot RMS error curve after the iteration ends
-#     plt.figure(figsize=(8, 6))
-#     plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o', linewidth=0.8)
-#     plt.title("RMS Error Over Iterations")
-#     plt.xlabel("Iteration")
-#     plt.ylabel("RMS Error")
-#     plt.grid()
-#     plt.show()
-#     return last_field
-#
-# # find the image
-#
-# field_ite = IPR(hologram_amplitude, z, wavelength, 500, 1e-20, area, W, H, min_frq, max_frq)
-# IPR_object = angular_spectrum_method(field_ite, area, -z, W, H, wavelength, min_frq, max_frq)
-# plot_field(IPR_object)
+def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, area, W, H, min_frq, max_frq):
+    update_phase = []
+    last_field = None
+    rms_errors = []  # Store RMS errors for plotting
+    noise_iterations = {150}  # Iterations to add random noise
+    for k in range(k_max):
+        # a) sensor plane
+        if k == 0:
+            phase0 = np.zeros(Measured_amplitude.shape)
+            field1 = Measured_amplitude * np.exp(1j * phase0)
+        else:
+            field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
+            if k in noise_iterations:
+                random_noise = 0.05 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
+                field1 += random_noise
+        # b) back-propagation and apply energy constraint
+        field2 = angular_spectrum_method(field1, area, -distance, W, H, wavelength, min_frq, max_frq)
+        phase_field2 = np.angle(field2) # phase
+        amp_field2 = np.abs(field2) # amplitude
+        abso = -np.log(amp_field2)
+        # Apply constraints
+        abso[abso < 0] = 0
+        phase_field2[abso < 0] = 0
+        amp_field2 = np.exp(-abso)
+        field22 = amp_field2 * np.exp(1j * phase_field2)
+
+        # c) forward propagation and update amplitude
+        field3 = angular_spectrum_method(field22, area, distance, W, H, wavelength, min_frq, max_frq)
+        amp_field3 = np.abs(field3)
+        phase_field3 = np.angle(field3)
+        update_phase.append(phase_field3)
+        last_field = field3
+        # tell if next iteration is needed
+        if k > 0:
+            amp_diff = amp_field3 - Measured_amplitude
+            rms_error = np.sqrt(np.mean(amp_diff ** 2))
+            rms_errors.append(rms_error)
+            print(f"the {k} iteration, Error RMS {rms_error}")
+            if rms_error < convergence_threshold:  # 小于阈值，认为已收敛
+                print(f"Converged at iteration {k}")
+                # field_final = Norm_amplitude * np.exp(1j * phase_field3)
+                return last_field
+    # Plot RMS error curve after the iteration ends
+    plt.figure(figsize=(8, 6))
+    plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o', linewidth=0.8)
+    plt.title("RMS Error Over Iterations")
+    plt.xlabel("Iteration")
+    plt.ylabel("RMS Error")
+    plt.grid()
+    plt.show()
+    return last_field
+
+# find the image
+
+field_ite = IPR(hologram_amplitude, z, wavelength, 500, 1e-20, area, W, H, min_frq, max_frq)
+IPR_object = angular_spectrum_method(field_ite, area, -z, W, H, wavelength, min_frq, max_frq)
+plot_field(IPR_object)
 
