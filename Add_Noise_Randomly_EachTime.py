@@ -2,23 +2,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
-from scipy.ndimage import gaussian_filter
 
-# Obey the Shannon criteria and with highpass/lowpass filter
+# Simplified of test1. With fewer filter on it
 def plot_field(field, title="Complex Field", cmap="viridis"):
     # Calculate amplitude and phase
     amplitude = np.abs(field)
     phase = np.angle(field)
+
     # Normalize phase to range [0, 2π]
     phase = (phase + 2 * np.pi) % (2 * np.pi)
+
     # Create a figure
     plt.figure(figsize=(12, 6))
+
     # Plot amplitude
     plt.subplot(1, 2, 1)
     plt.imshow(amplitude, cmap=cmap)
     plt.colorbar(label="Amplitude")
     plt.title(f"{title} - Amplitude")
     plt.axis('off')  # Turn off axis
+
     # Plot phase
     plt.subplot(1, 2, 2)
     plt.imshow(phase, cmap="twilight", vmin=0, vmax=2 * np.pi)
@@ -28,6 +31,10 @@ def plot_field(field, title="Complex Field", cmap="viridis"):
     # Show plots
     plt.tight_layout()
     plt.show()
+
+
+
+
 def load_and_normalize_image(filepath):
     # Load the image
     image = Image.open(filepath).convert('L')  # Convert to grayscale
@@ -36,79 +43,36 @@ def load_and_normalize_image(filepath):
     # Normalize the grayscale data to [0, 1]
     normalized_data = (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
     return normalized_data
-def apply_gaussian_window(field, W, H, area, sigma=1.0):
-    # Compute Gaussian weights
-    FX = W / area
-    FY = H / area
-    gaussian_window = np.exp(-(FX**2 + FY**2) / (2 * sigma**2))
-    return field * gaussian_window
-
-def band_pass_filter(W, H, area, low_cutoff=None, high_cutoff=None):
-    FX = W / area
-    FY = H / area
-    spatial_frequencies = np.sqrt(FX**2 + FY**2)  # Radial spatial frequencies
-    # Initialize mask
-    band_pass_mask = np.ones_like(spatial_frequencies, dtype=bool)
-    # Apply high-pass filter if specified
-    if low_cutoff is not None:
-        high_pass_mask = spatial_frequencies >= low_cutoff
-        band_pass_mask &= high_pass_mask
-    # Apply low-pass filter if specified
-    if high_cutoff is not None:
-        low_pass_mask = spatial_frequencies <= high_cutoff
-        band_pass_mask &= low_pass_mask
-    return band_pass_mask
-
-
 
 def Transfer_function(W, H, distance, wavelength, area):
-    # Calculate spatial frequencies
     FX = W / area
     FY = H / area
-    # Calculate the square root for the transfer function
     square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
     valid_mask = (wavelength ** 2 * FX ** 2 + wavelength ** 2 * FY ** 2) <= 1
     square_root[~valid_mask] = 0
-    # Apply the transfer function formula
     temp = np.exp(1j * 2 * np.pi * distance / wavelength * square_root)
+    # plot_FX_FY(FX, FY)
     return temp
 
-
-def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=None, high_cutoff=None, sigma=None):
-    # Perform Fourier Transform
+def angular_spectrum_method(field, area, distance, W, H):
     GT = fftshift(fft2(ifftshift(field)))
-    # Compute transfer function
-    transfer_function = Transfer_function(W, H, distance, wavelength, area)
-    # Apply transfer function
-    GT_filtered = GT * transfer_function
-    # Apply band-pass filter
-    band_pass_mask = band_pass_filter(W, H, area, low_cutoff, high_cutoff)
-    GT_filtered = GT_filtered * band_pass_mask
-    # Optionally apply Gaussian window in frequency domain
-    if sigma is not None:
-        GT_filtered = apply_gaussian_window(GT_filtered, W, H, area, sigma=sigma)
-    # Perform Inverse Fourier Transform
-    gt_prime = fftshift(ifft2(ifftshift(GT_filtered)))
+    gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(W, H, distance, 532e-9, area))))
     return gt_prime
 
-wavelength = 532e-9
-numPixels = 500
-pixelSize = 1e-7 # unit: meter
-area = numPixels * pixelSize
-z = 0.001
-max_frq = 1 / 532e-9
-min_frq = 0
 
-# Coordination of sensor
+numPixels = 1024
+pixelSize = 1e-7 # unit: meter
+z2 = 0.001
+area = numPixels * pixelSize
+# Define the sensor grid
 x = np.arange(numPixels) - numPixels / 2 - 1
 y = np.arange(numPixels) - numPixels / 2 - 1
 W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('pic/a_object.jpg')
+object = load_and_normalize_image('sine_wave2.png')
 plot_field(object)
-m1 = W ** 2 + H ** 2 <= 2500
 am = np.exp(-1.6 * object)
 ph0 = 3
 ph = ph0 * object
@@ -116,21 +80,18 @@ field_after_object = am * np.exp(1j * ph)
 plot_field(field_after_object)
 
 
-# hologram
-hologram_field = angular_spectrum_method(field_after_object, area, z, W, H, wavelength, min_frq, max_frq)
-print(hologram_field)
+# acquire hologram
+hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
 hologram_amplitude = np.abs(hologram_field)
-print(hologram_amplitude)
 plot_field(hologram_field)
 
 
-
 # IPR
-def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, area, W, H, min_frq, max_frq):
+def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
     update_phase = []
     last_field = None
     rms_errors = []  # Store RMS errors for plotting
-    noise_iterations = {150}  # Iterations to add random noise
+    specific_iterations = {100}  # Iterations to add reduced-area support
     for k in range(k_max):
         # a) sensor plane
         if k == 0:
@@ -138,11 +99,12 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
             field1 = Measured_amplitude * np.exp(1j * phase0)
         else:
             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-            if k in noise_iterations:
-                random_noise = 0.05 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
-                field1 += random_noise
+            # if k < 1000:
+            #     random_noise = 0.05 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
+            #     field1 += random_noise
+
         # b) back-propagation and apply energy constraint
-        field2 = angular_spectrum_method(field1, area, -distance, W, H, wavelength, min_frq, max_frq)
+        field2 = angular_spectrum_method(field1, area, -distance, W, H)
         phase_field2 = np.angle(field2) # phase
         amp_field2 = np.abs(field2) # amplitude
         abso = -np.log(amp_field2)
@@ -151,9 +113,13 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
         phase_field2[abso < 0] = 0
         amp_field2 = np.exp(-abso)
         field22 = amp_field2 * np.exp(1j * phase_field2)
+        # Reduced support
+        # if k in specific_iterations:
+        #     mask = (W < H) & (W > -H)
+        #     field22[~mask] = 0
 
         # c) forward propagation and update amplitude
-        field3 = angular_spectrum_method(field22, area, distance, W, H, wavelength, min_frq, max_frq)
+        field3 = angular_spectrum_method(field22, area, distance, W, H)
         amp_field3 = np.abs(field3)
         phase_field3 = np.angle(field3)
         update_phase.append(phase_field3)
@@ -180,7 +146,11 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z, wavelength, 500, 1e-20, area, W, H, min_frq, max_frq)
-IPR_object = angular_spectrum_method(field_ite, area, -z, W, H, wavelength, min_frq, max_frq)
+field_ite = IPR(hologram_amplitude, z2, 1000, 1.5e-8, area, W, H)
+IPR_object = angular_spectrum_method(field_ite, area, -z2, W, H)
 plot_field(IPR_object)
+
+
+
+
 
