@@ -88,10 +88,10 @@ def angular_spectrum_method(field, area, distance, W, H, wavelength, low_cutoff=
     return gt_prime
 
 wavelength = 532e-9
-numPixels = 1024
-pixelSize = 1e-7 # unit: meter
+numPixels = 500
+pixelSize = 2e-6 # unit: meter
 area = numPixels * pixelSize
-z = 0.001
+z = 0.005
 max_frq = 1 / wavelength
 min_frq = 0
 
@@ -102,7 +102,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('pic/circle.png', 2)
+object = load_and_normalize_image('pic/a_object.jpg', 2)
 plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3
@@ -170,7 +170,7 @@ def IPR(Measured_amplitude, distance, wavelength, k_max, convergence_threshold, 
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z, wavelength, 1000, 1e-20, area, W, H, min_frq, max_frq)
+field_ite = IPR(hologram_amplitude, z, wavelength, 2000, 1e-20, area, W, H, min_frq, max_frq)
 IPR_object = angular_spectrum_method_for_hologram(field_ite, area, -z, W, H)
 plot_field(IPR_object)
 

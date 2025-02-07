@@ -60,9 +60,9 @@ def angular_spectrum_method(field, area, distance, W, H):
     return gt_prime
 
 
-numPixels = 1024
-pixelSize = 1e-7 # unit: meter
-z2 = 0.001
+numPixels = 500
+pixelSize = 2e-6 # unit: meter
+z2 = 0.005
 area = numPixels * pixelSize
 # Define the sensor grid
 x = np.arange(numPixels) - numPixels / 2 - 1
@@ -71,7 +71,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('sine_wave2.png')
+object = load_and_normalize_image('pic/a_object.jpg')
 plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3
