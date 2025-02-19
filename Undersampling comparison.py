@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
+from skimage.metrics import structural_similarity as ssim
+from scipy.ndimage import zoom
 
 # Simplified of test1. With fewer filter on it
 def plot_field(field, title="Complex Field", cmap="viridis"):
@@ -60,19 +62,45 @@ def angular_spectrum_method(field, area, distance, W, H):
     return gt_prime
 
 
-numPixels = 1024
-pixelSize = 2e-6 # unit: meter
-z2 = 0.005
-area = numPixels * pixelSize
-# Define the sensor grid
-x = np.arange(numPixels) - numPixels / 2 - 1
-y = np.arange(numPixels) - numPixels / 2 - 1
-W, H = np.meshgrid(x, y)
+# --- Define Parameters ---
+numPixels = 1024  # 原始样本的像素分辨率
+original_pixelSize = 2e-7  # 样本原始像素大小 (m)
+new_pixelSize = 1.6e-6  # 传感器的新像素大小 (m)
+z2 = 0.005  # 传播距离
+
+# --- 计算新的传感器像素数 ---
+FOV = numPixels * original_pixelSize  # 保持样本的物理尺寸不变
+numPixels_new = int(FOV / new_pixelSize)  # 计算新传感器的分辨率
+
+# --- 加载样本（原始分辨率）---
+object = load_and_normalize_image('pic/microscopic_sample_no_grid.png')
+# --- 如果分辨率变了，对样本进行插值 ---
+if numPixels_new != numPixels:
+    object_resized = zoom(object, numPixels_new / numPixels, order=3)  # 三次插值
+else:
+    object_resized = object
+
+# --- 显示原始与调整后的样本 ---
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1)
+plt.imshow(object, cmap='gray')
+plt.title(f'Original Sample ({numPixels}x{numPixels})')
+plt.axis('off')
+
+plt.subplot(1, 2, 2)
+plt.imshow(object_resized, cmap='gray')
+plt.title(f'Resized Sample ({numPixels_new}x{numPixels_new})')
+plt.axis('off')
+
+plt.show()
+
+# --- 生成新的传感器网格 ---
+x = (np.arange(numPixels_new) - numPixels_new / 2 - 1) * new_pixelSize
+y = (np.arange(numPixels_new) - numPixels_new / 2 - 1) * new_pixelSize
+W, H = np.meshgrid(x, y)  # 让 W, H 适应新的传感器像素大小
 
 
 # Define the field after sample
-object = load_and_normalize_image('pic/microscopic_sample_no_grid.png')
-plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3
 ph = ph0 * object
@@ -91,7 +119,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
     update_phase = []
     last_field = None
     rms_errors = []  # Store RMS errors for plotting
-    specific_iterations = {100}  # Iterations to add reduced-area support
+    ssim_errors = []
     for k in range(k_max):
         # a) sensor plane
         if k == 0:
@@ -99,9 +127,6 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
             field1 = Measured_amplitude * np.exp(1j * phase0)
         else:
             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-            # if k < 1000:
-            #     random_noise = 0.05 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
-            #     field1 += random_noise
 
         # b) back-propagation and apply energy constraint
         field2 = angular_spectrum_method(field1, area, -distance, W, H)
@@ -113,10 +138,6 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
         phase_field2[abso < 0] = 0
         amp_field2 = np.exp(-abso)
         field22 = amp_field2 * np.exp(1j * phase_field2)
-        # Reduced support
-        # if k in specific_iterations:
-        #     mask = (W < H) & (W > -H)
-        #     field22[~mask] = 0
 
         # c) forward propagation and update amplitude
         field3 = angular_spectrum_method(field22, area, distance, W, H)
@@ -130,23 +151,39 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
             rms_error = np.sqrt(np.mean(amp_diff ** 2))
             rms_errors.append(rms_error)
             print(f"the {k} iteration, Error RMS {rms_error}")
-            if rms_error < convergence_threshold:  # 小于阈值，认为已收敛
-                print(f"Converged at iteration {k}")
-                # field_final = Norm_amplitude * np.exp(1j * phase_field3)
-                return last_field
-    # Plot RMS error curve after the iteration ends
-    plt.figure(figsize=(8, 6))
-    plt.plot(range(1, len(rms_errors) + 1), rms_errors, marker='o', linewidth=0.8)
-    plt.title("RMS Error Over Iterations")
-    plt.xlabel("Iteration")
-    plt.ylabel("RMS Error")
-    plt.grid()
+            ssim_value = ssim(Measured_amplitude, amp_field3, data_range=Measured_amplitude.max() - Measured_amplitude.min())
+            ssim_errors.append(ssim_value)
+            print(f"the {k} iteration, Error SSIM {ssim_value}")
+
+            # if rms_error < convergence_threshold:  # 小于阈值，认为已收敛
+            #     print(f"Converged at iteration {k}")
+            #     # field_final = Norm_amplitude * np.exp(1j * phase_field3)
+            #     return last_field
+    # 绘制RMS误差曲线
+    plt.subplot(2, 1, 1)
+    plt.plot(rms_errors, 'r-', linewidth=2, label='RMS Error')
+    plt.title('Convergence Analysis')
+    plt.ylabel('RMS Error')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+
+    # 绘制SSIM曲线
+    plt.subplot(2, 1, 2)
+    plt.plot(ssim_errors, 'b-', linewidth=2, label='SSIM')
+    plt.xlabel('Iteration')
+    plt.ylabel('SSIM')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig('convergence_metrics.png', dpi=300)
     plt.show()
+
     return last_field
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z2, 1000, 1.5e-8, area, W, H)
+field_ite = IPR(hologram_amplitude, z2, 500, 1.5e-8, area, W, H)
 IPR_object = angular_spectrum_method(field_ite, area, -z2, W, H)
 plot_field(IPR_object)
 
