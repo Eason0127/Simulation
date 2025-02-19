@@ -33,9 +33,6 @@ def plot_field(field, title="Complex Field", cmap="viridis"):
     plt.tight_layout()
     plt.show()
 
-
-
-
 def load_and_normalize_image(filepath):
     # Load the image
     image = Image.open(filepath).convert('L')  # Convert to grayscale
@@ -84,6 +81,7 @@ plot_field(field_after_object)
 # acquire hologram
 hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
 hologram_amplitude = np.abs(hologram_field)
+np.save("hologram.npy", hologram_amplitude.astype(np.float32))  # 存储为 float32
 plot_field(hologram_field)
 
 

@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
-from scipy.ndimage import zoom
 
 # Simplified of test1. With fewer filter on it
 def plot_field(field, title="Complex Field", cmap="viridis"):
@@ -34,9 +33,6 @@ def plot_field(field, title="Complex Field", cmap="viridis"):
     plt.tight_layout()
     plt.show()
 
-
-
-
 def load_and_normalize_image(filepath):
     # Load the image
     image = Image.open(filepath).convert('L')  # Convert to grayscale
@@ -62,56 +58,19 @@ def angular_spectrum_method(field, area, distance, W, H):
     return gt_prime
 
 
-# --- Define Parameters ---
-numPixels = 1024  # 原始样本的像素分辨率
-original_pixelSize = 2e-7  # 样本原始像素大小 (m)
-new_pixelSize = 1.6e-6  # 传感器的新像素大小 (m)
-z2 = 0.005  # 传播距离
-
-# --- 计算新的传感器像素数 ---
-FOV = numPixels * original_pixelSize  # 保持样本的物理尺寸不变
-numPixels_new = int(FOV / new_pixelSize)  # 计算新传感器的分辨率
-
-# --- 加载样本（原始分辨率）---
-object = load_and_normalize_image('pic/microscopic_sample_no_grid.png')
-# --- 如果分辨率变了，对样本进行插值 ---
-if numPixels_new != numPixels:
-    object_resized = zoom(object, numPixels_new / numPixels, order=3)  # 三次插值
-else:
-    object_resized = object
-
-# --- 显示原始与调整后的样本 ---
-plt.figure(figsize=(10, 5))
-plt.subplot(1, 2, 1)
-plt.imshow(object, cmap='gray')
-plt.title(f'Original Sample ({numPixels}x{numPixels})')
-plt.axis('off')
-
-plt.subplot(1, 2, 2)
-plt.imshow(object_resized, cmap='gray')
-plt.title(f'Resized Sample ({numPixels_new}x{numPixels_new})')
-plt.axis('off')
-
-plt.show()
-
-# --- 生成新的传感器网格 ---
-x = (np.arange(numPixels_new) - numPixels_new / 2 - 1) * new_pixelSize
-y = (np.arange(numPixels_new) - numPixels_new / 2 - 1) * new_pixelSize
-W, H = np.meshgrid(x, y)  # 让 W, H 适应新的传感器像素大小
+numPixels = 128
+pixelSize = 1.6e-6 # unit: meter
+z2 = 0.005
+area = numPixels * pixelSize
+# Define the sensor grid
+x = np.arange(numPixels) - numPixels / 2 - 1
+y = np.arange(numPixels) - numPixels / 2 - 1
+W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-am = np.exp(-1.6 * object)
-ph0 = 3
-ph = ph0 * object
-field_after_object = am * np.exp(1j * ph)
-plot_field(field_after_object)
-
-
-# acquire hologram
-hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
-hologram_amplitude = np.abs(hologram_field)
-plot_field(hologram_field)
+hologram_amplitude = np.load('resized_data.npy').astype(np.float32)  # 读取时转换回来
+plot_field(hologram_amplitude)
 
 
 # IPR
@@ -183,7 +142,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z2, 500, 1.5e-8, area, W, H)
+field_ite = IPR(hologram_amplitude, z2, 450, 1.5e-8, area, W, H)
 IPR_object = angular_spectrum_method(field_ite, area, -z2, W, H)
 plot_field(IPR_object)
 
