@@ -3,9 +3,11 @@ import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
+from scipy.ndimage import zoom
+
 
 # --- 设定不同像素尺寸的传感器 ---
-sensor_pixel_sizes = [0.2e-6, 4e-6]  # 0.2µm, 0.8µm, 1.6µm
+sensor_pixel_sizes = [0.2e-6, 0.8e-6, 1.6e-6, 2.4e-6]  # 0.2µm, 0.8µm, 1.6µm
 numPixels_original = 1024  # 原始分辨率
 FOV = numPixels_original * sensor_pixel_sizes[0]  # 固定视场范围
 z2 = 0.005  # 传播距离
@@ -29,9 +31,22 @@ def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels):
     temp = np.exp(1j * k * distance * square_root)
     return temp
 
+
+def resize_transfer_function(transfer, new_shape):
+    zoom_factors = (new_shape[0] / transfer.shape[0], new_shape[1] / transfer.shape[1])
+
+    # 先使用最近邻插值，避免新值
+    resized = zoom(transfer, zoom_factors, order=0)
+
+    # 让所有插值的值变为 0（保持原始点）
+    mask = zoom(np.ones_like(transfer), zoom_factors, order=0)  # 原始点为1，其它点为0
+    resized = resized * mask  # 只保留原始点，其余变0
+    return resized
+
 def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels):
     GT = fftshift(fft2(ifftshift(field)))
     transfer = Transfer_function(W, H, distance, 532e-9, pixelSize, numPixels)
+    transfer = resize_transfer_function(transfer, field.shape)
     gt_prime = fftshift(ifft2(ifftshift(GT * transfer)))
     return gt_prime
 
@@ -60,6 +75,7 @@ for pixelSize in sensor_pixel_sizes:
 
     # --- 计算全息图 ---
     hologram_field = angular_spectrum_method(field_after_object, pixelSize, z2, W, H, numPixels)
+    print(hologram_field.size)
     hologram_amplitude = np.abs(hologram_field)
 
     plt.figure(figsize=(6, 6))
@@ -143,7 +159,7 @@ for pixelSize in sensor_pixel_sizes:
         return last_field, rms_errors, ssim_errors
 
     # --- 运行 IPR ---
-    field_ite, rms_errors, ssim_errors = IPR(hologram_amplitude, z2, 200, 1.5e-20, pixelSize, W, H, numPixels)
+    field_ite, rms_errors, ssim_errors = IPR(hologram_amplitude, z2, 400, 1.5e-20, pixelSize, W, H, numPixels)
 
     # --- 反向传播获得最终重建图像 ---
     IPR_object = angular_spectrum_method(field_ite, pixelSize, -z2, W, H, numPixels)
