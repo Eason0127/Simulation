@@ -7,7 +7,7 @@ from scipy.ndimage import zoom
 
 
 # --- 设定不同像素尺寸的传感器 ---
-sensor_pixel_sizes = [0.2e-6, 1.6e-6]  # 0.2µm, 0.8µm, 1.6µm
+sensor_pixel_sizes = [0.2e-6, 0.8e-6, 1.6e-6, 2.4e-6]  # 0.2µm, 0.8µm, 1.6µm
 numPixels_original = 1024  # 原始分辨率
 FOV = numPixels_original * sensor_pixel_sizes[0]  # 固定视场范围
 z2 = 0.005  # 传播距离
@@ -51,52 +51,18 @@ def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels):
     return gt_prime
 
 
-numPixels_original = 1024
-x = np.linspace(-512, 511, numPixels_original)
-y = np.linspace(-512, 511, numPixels_original)
-X, Y = np.meshgrid(x, y)
 
-# 2. 定义两个区域的掩模：
-#    - Region A（纯振幅吸收区域）：例如半径小于150的区域
-#    - Region B（纯相位延迟区域）：例如半径介于150到300之间
-mask_amp = (X**2 + Y**2) < 150**2
-mask_phase = ((X**2 + Y**2) >= 150**2) & ((X**2 + Y**2) < 300**2)
-
-# 3. 设置不同区域的调制参数
-alpha = 1.6  # 振幅吸收系数（仅在 Region A 内有效）
-beta = 3     # 相位延迟系数（仅在 Region B 内有效）
-
-# 4. 构造调制函数
-# 在 Region A：仅有振幅吸收 => field = exp(-alpha * object)
-# 在 Region B：仅有相位延迟  => field = exp(1j * beta * object)
-# 其它区域：无调制 => field = 1
-field_amp = np.exp(-alpha * object)
-field_phase = np.exp(1j * beta * object)
-
-# 使用 np.where 分别将不同区域组合起来
-# 注意 np.where 返回的数组类型与两个分支的类型一致，所以这里确保复数类型正确。
-field_after_object = np.where(mask_amp, field_amp,
-                              np.where(mask_phase, field_phase, field_amp * field_phase))
-field_after_object = field_after_object.astype(np.complex64)
-
-# 提取振幅和相位
+# --- 生成样本场 ---
+am = np.exp(-1.6 * object)
+ph0 = 3
+ph = ph0 * object
+field_after_object = am * np.exp(1j * ph)
 amp_field_after = np.abs(field_after_object)
-phase_field_after = np.angle(field_after_object)
-
-# --- 可视化结果 ---
-plt.figure(figsize=(12, 5))
-
-plt.subplot(1, 2, 1)
+plt.figure(figsize=(6, 6))
 plt.imshow(amp_field_after, cmap='gray')
-plt.title("Amplitude (Modulation)")
-plt.colorbar()
-
-plt.subplot(1, 2, 2)
-plt.imshow(phase_field_after, cmap='hsv')
-plt.title("Phase Delay")
-plt.colorbar()
-
-plt.tight_layout()
+plt.colorbar(label="Reconstructed Amplitude")
+plt.title(f"field after sample")
+plt.axis('off')
 plt.show()
 
 # --- 处理不同像素大小的传感器 ---
@@ -122,6 +88,34 @@ for pixelSize in sensor_pixel_sizes:
     # --- 保存全息图数据 ---
     # np.save(f"hologram_{int(pixelSize*1e9)}nm.npy", hologram_amplitude.astype(np.float32))
     print(f"Saved hologram with pixel size {pixelSize*1e6}µm, resolution {numPixels}×{numPixels}")
+
+
+
+    # 1. Scaling
+    scaling_factor = 16
+    ideal_intensity = (hologram_amplitude ** 2) * scaling_factor
+
+    # 2. Shot Noise
+    shot_noisy_intensity = np.random.poisson(ideal_intensity)
+    shot_noisy_intensity = shot_noisy_intensity / scaling_factor
+
+    # 3. Thermal Noise
+    thermal_noise_std = 1 / scaling_factor
+    thermal_noise = np.random.normal(0, thermal_noise_std, ideal_intensity.shape)
+
+    # 4. Readout Noise
+    readout_noise_std = 3 / scaling_factor
+    readout_noise = np.random.normal(0, readout_noise_std, ideal_intensity.shape)
+
+    # 5. Sum up the noise
+    total_intensity = shot_noisy_intensity + thermal_noise + readout_noise
+
+    # 确保强度非负
+    total_intensity[total_intensity < 0] = 0
+
+    # 6. 将带噪强度转换回振幅（用于后续 IPR 过程）
+    hologram_amplitude_noisy = np.sqrt(total_intensity)
+
 
     # --- IPR 过程 ---
     def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after):
@@ -149,11 +143,13 @@ for pixelSize in sensor_pixel_sizes:
             amp_field2 = np.exp(-abso)
             field22 = amp_field2 * np.exp(1j * phase_field2)
 
+
             # c) 正向传播并更新振幅
             field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels)
             amp_field3 = np.abs(field3)
             phase_field3 = np.angle(field3)
             update_phase.append(phase_field3)
+
 
             field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels)
             amp_field4 = np.abs(field4)
@@ -164,8 +160,7 @@ for pixelSize in sensor_pixel_sizes:
                 rms_errors.append(rms_error)
                 print(f"Iteration {k}: RMS Error = {rms_error}")
 
-                ssim_value = ssim(amp_field_after, amp_field4,
-                                  data_range=Measured_amplitude.max() - Measured_amplitude.min())
+                ssim_value = ssim(amp_field_after, amp_field4, data_range=Measured_amplitude.max() - Measured_amplitude.min())
                 ssim_errors.append(ssim_value)
                 print(f"Iteration {k}: SSIM = {ssim_value}")
 
@@ -173,7 +168,7 @@ for pixelSize in sensor_pixel_sizes:
                 if rms_error < convergence_threshold:
                     print(f"Converged at iteration {k}")
                     return last_field, rms_errors, ssim_errors
-            # 绘制RMS误差曲线
+        # 绘制RMS误差曲线
         plt.subplot(2, 1, 1)
         plt.plot(rms_errors, 'r-', linewidth=2, label='RMS Error')
         plt.title('Convergence Analysis')
@@ -194,25 +189,16 @@ for pixelSize in sensor_pixel_sizes:
         plt.show()
         return last_field, rms_errors, ssim_errors
 
-
     # --- 运行 IPR ---
-    field_ite, rms_errors, ssim_errors = IPR(hologram_amplitude, z2, 100, 1.5e-20, pixelSize, W, H, numPixels,
-                                             amp_field_after)
+    field_ite, rms_errors, ssim_errors = IPR(hologram_amplitude_noisy, z2, 80, 1.5e-20, pixelSize, W, H, numPixels, amp_field_after)
+
 
     # --- 绘制图像 ---
     plt.figure(figsize=(6, 6))
     plt.imshow(np.abs(field_ite), cmap='gray')
     plt.colorbar(label="Reconstructed Amplitude")
-    plt.title(f"Reconstructed Image (Pixel Size: {pixelSize * 1e6}µm)")
+    plt.title(f"Reconstructed Image (Pixel Size: {pixelSize*1e6}µm)")
     plt.axis('off')
     plt.show()
 
-    print(f"Reconstruction for pixel size {pixelSize * 1e6}µm completed.\n")
-    plt.figure(figsize=(6, 6))
-    plt.imshow(np.angle(field_ite), cmap='gray')
-    plt.colorbar(label="Reconstructed Amplitude")
-    plt.title(f"Reconstructed Image (Pixel Size: {pixelSize * 1e6}µm)")
-    plt.axis('off')
-    plt.show()
-
-    print(f"Reconstruction for pixel size {pixelSize * 1e6}µm completed.\n")
+    print(f"Reconstruction for pixel size {pixelSize*1e6}µm completed.\n")
