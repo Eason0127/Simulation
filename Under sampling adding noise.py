@@ -6,13 +6,13 @@ from skimage.metrics import structural_similarity as ssim
 from scipy.ndimage import zoom
 
 
-# --- 设定不同像素尺寸的传感器 ---
+# --- Setting pixel sizes ---
 sensor_pixel_sizes = [0.2e-6, 0.8e-6, 1.6e-6, 2.4e-6]  # 0.2µm, 0.8µm, 1.6µm
 numPixels_original = 1024  # 原始分辨率
 FOV = numPixels_original * sensor_pixel_sizes[0]  # 固定视场范围
 z2 = 0.005  # 传播距离
 
-# --- 加载 & 归一化样本 ---
+# --- load sample ---
 def load_and_normalize_image(filepath):
     image = Image.open(filepath).convert('L')  # 转灰度
     grayscale_data = np.array(image, dtype=np.float32)
@@ -20,7 +20,7 @@ def load_and_normalize_image(filepath):
 
 object = load_and_normalize_image('pic/microscopic_sample_no_grid.png')
 
-# --- 角谱传播方法 ---
+# --- Angular spectrum method ---
 def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels):
     FX = W / (pixelSize * numPixels)
     FY = H / (pixelSize * numPixels)
@@ -30,7 +30,6 @@ def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels):
     square_root[~valid_mask] = 0
     temp = np.exp(1j * k * distance * square_root)
     return temp
-
 
 def resize_transfer_function(transfer, new_shape):
     zoom_factors = (new_shape[0] / transfer.shape[0], new_shape[1] / transfer.shape[1])
@@ -65,7 +64,7 @@ plt.title(f"field after sample")
 plt.axis('off')
 plt.show()
 
-# --- 处理不同像素大小的传感器 ---
+# --- Deal with different sensors ---
 for pixelSize in sensor_pixel_sizes:
     numPixels = int(FOV / pixelSize)  # 计算新分辨率
     x = (np.arange(numPixels) - numPixels / 2 - 1)
@@ -73,7 +72,7 @@ for pixelSize in sensor_pixel_sizes:
     W, H = np.meshgrid(x, y)
 
 
-    # --- 计算全息图 ---
+    # --- Calculate the hologram ---
     hologram_field = angular_spectrum_method(field_after_object, pixelSize, z2, W, H, numPixels)
     print(hologram_field.size)
     hologram_amplitude = np.abs(hologram_field)
@@ -85,12 +84,10 @@ for pixelSize in sensor_pixel_sizes:
     plt.axis('off')
     plt.show()
 
-    # --- 保存全息图数据 ---
-    # np.save(f"hologram_{int(pixelSize*1e9)}nm.npy", hologram_amplitude.astype(np.float32))
     print(f"Saved hologram with pixel size {pixelSize*1e6}µm, resolution {numPixels}×{numPixels}")
 
 
-
+    # --- Adding noise---
     # 1. Scaling
     scaling_factor = 16
     ideal_intensity = (hologram_amplitude ** 2) * scaling_factor
@@ -110,14 +107,14 @@ for pixelSize in sensor_pixel_sizes:
     # 5. Sum up the noise
     total_intensity = shot_noisy_intensity + thermal_noise + readout_noise
 
-    # 确保强度非负
+    # Make sure amplitude >= 0
     total_intensity[total_intensity < 0] = 0
 
-    # 6. 将带噪强度转换回振幅（用于后续 IPR 过程）
+    # 6. Convert to intensity form
     hologram_amplitude_noisy = np.sqrt(total_intensity)
 
 
-    # --- IPR 过程 ---
+    # --- IPR ---
     def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after):
         update_phase = []
         last_field = None
@@ -125,14 +122,14 @@ for pixelSize in sensor_pixel_sizes:
         ssim_errors = []
 
         for k in range(k_max):
-            # a) 传感器平面
+            # a) Sensor plane
             if k == 0:
                 phase0 = np.zeros(Measured_amplitude.shape)
                 field1 = Measured_amplitude * np.exp(1j * phase0)
             else:
                 field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
 
-            # b) 反向传播并施加能量约束
+            # b) Backpropagation and apply constraint
             field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels)
             phase_field2 = np.angle(field2)  # phase
             amp_field2 = np.abs(field2)  # amplitude
@@ -144,7 +141,7 @@ for pixelSize in sensor_pixel_sizes:
             field22 = amp_field2 * np.exp(1j * phase_field2)
 
 
-            # c) 正向传播并更新振幅
+            # c) Forward propagation
             field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels)
             amp_field3 = np.abs(field3)
             phase_field3 = np.angle(field3)
@@ -154,7 +151,7 @@ for pixelSize in sensor_pixel_sizes:
             field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels)
             amp_field4 = np.abs(field4)
             last_field = field4
-            # 计算误差
+            # Error calculation
             if k > 0:
                 rms_error = np.sqrt(np.mean((amp_field4 - amp_field_after) ** 2))
                 rms_errors.append(rms_error)
@@ -164,11 +161,11 @@ for pixelSize in sensor_pixel_sizes:
                 ssim_errors.append(ssim_value)
                 print(f"Iteration {k}: SSIM = {ssim_value}")
 
-                # 终止条件
+                # threshold
                 if rms_error < convergence_threshold:
                     print(f"Converged at iteration {k}")
                     return last_field, rms_errors, ssim_errors
-        # 绘制RMS误差曲线
+        # Draw RMS
         plt.subplot(2, 1, 1)
         plt.plot(rms_errors, 'r-', linewidth=2, label='RMS Error')
         plt.title('Convergence Analysis')
@@ -176,7 +173,7 @@ for pixelSize in sensor_pixel_sizes:
         plt.grid(True, linestyle='--', alpha=0.7)
         plt.legend()
 
-        # 绘制SSIM曲线
+        # Draw SSIM
         plt.subplot(2, 1, 2)
         plt.plot(ssim_errors, 'b-', linewidth=2, label='SSIM')
         plt.xlabel('Iteration')
@@ -189,11 +186,11 @@ for pixelSize in sensor_pixel_sizes:
         plt.show()
         return last_field, rms_errors, ssim_errors
 
-    # --- 运行 IPR ---
+    # --- Run IPR ---
     field_ite, rms_errors, ssim_errors = IPR(hologram_amplitude_noisy, z2, 80, 1.5e-20, pixelSize, W, H, numPixels, amp_field_after)
 
 
-    # --- 绘制图像 ---
+    # --- Draw image ---
     plt.figure(figsize=(6, 6))
     plt.imshow(np.abs(field_ite), cmap='gray')
     plt.colorbar(label="Reconstructed Amplitude")
