@@ -33,19 +33,17 @@ def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels):
 
 def fourier_downsample(image, new_shape):
 
-    N = image.shape[0]  # 假设图像为正方形，N x N
+    N = image.shape[0]  # N x N
     M = new_shape[0]
-    # 1. 计算频谱
+    # 1. Calculate the Fourier frequency
     F = np.fft.fftshift(np.fft.fft2(image))
-    # 2. 裁剪频谱中心区域
+    # 2. Downsize the support area
     start = (N - M) // 2
     end = start + M
     F_crop = F[start:end, start:end]
-    # 3. 逆变换
+    # 3. Inverse transform
     image_down = np.fft.ifft2(np.fft.ifftshift(F_crop))
     image_down = np.abs(image_down)
-    # 4. 补偿能量：由于 ifft2 默认除以 N^2，而裁剪减少了点数，能量降低
-    #    此处乘以 (N/M)^2 进行归一化（依据具体归一化方式可能需要调整）
     image_down *= (N / M) ** 2
     return image_down
 
@@ -65,7 +63,7 @@ for pixelSize in sensor_pixel_sizes:
     object_down = fourier_downsample(object, (numPixels, numPixels))
 
     # --- Field of sample ---
-    am = np.exp(-1.6 * object_down)
+    am = np.exp(-0.1 * object_down)
     ph0 = 3
     ph = ph0 * object_down
     field_after_object = am * np.exp(1j * ph)
@@ -77,130 +75,137 @@ for pixelSize in sensor_pixel_sizes:
     plt.axis('off')
     plt.show()
 
-    # # --- Calculate the hologram ---
-    # hologram_field = angular_spectrum_method(field_after_object, pixelSize, z2, W, H, numPixels)
-    # print(hologram_field.size)
-    # hologram_amplitude = np.abs(hologram_field)
-    #
-    # plt.figure(figsize=(6, 6))
-    # plt.imshow(hologram_amplitude, cmap='gray')
-    # plt.colorbar(label="Reconstructed Amplitude")
-    # plt.title(f"hologram (Pixel Size: {pixelSize}µm)")
-    # plt.axis('off')
-    # plt.show()
-    #
-    # print(f"Saved hologram with pixel size {pixelSize}µm, resolution {numPixels}×{numPixels}")
-    #
-    #
-    # # --- Adding noise---
-    # # 1. Scaling
-    # scaling_factor = 16
-    # ideal_intensity = (hologram_amplitude ** 2) * scaling_factor
-    #
-    # # 2. Shot Noise
-    # shot_noisy_intensity = np.random.poisson(ideal_intensity)
-    # shot_noisy_intensity = shot_noisy_intensity / scaling_factor
-    #
-    # # 3. Thermal Noise
-    # thermal_noise_std = 1 / scaling_factor
-    # thermal_noise = np.random.normal(0, thermal_noise_std, ideal_intensity.shape)
-    #
-    # # 4. Readout Noise
-    # readout_noise_std = 3 / scaling_factor
-    # readout_noise = np.random.normal(0, readout_noise_std, ideal_intensity.shape)
-    #
-    # # 5. Sum up the noise
-    # total_intensity = shot_noisy_intensity + thermal_noise + readout_noise
-    #
-    # # Make sure amplitude >= 0
-    # total_intensity[total_intensity < 0] = 0
-    #
-    # # 6. Convert to intensity form
-    # hologram_amplitude_noisy = np.sqrt(total_intensity)
-    #
-    #
-    # # --- IPR ---
-    # def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after):
-    #     update_phase = []
-    #     last_field = None
-    #     rms_errors = []
-    #     ssim_errors = []
-    #
-    #     for k in range(k_max):
-    #         # a) Sensor plane
-    #         if k == 0:
-    #             phase0 = np.zeros(Measured_amplitude.shape)
-    #             field1 = Measured_amplitude * np.exp(1j * phase0)
-    #         else:
-    #             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-    #
-    #         # b) Backpropagation and apply constraint
-    #         field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels)
-    #         phase_field2 = np.angle(field2)  # phase
-    #         amp_field2 = np.abs(field2)  # amplitude
-    #         abso = -np.log(amp_field2)
-    #         # Apply constraints
-    #         abso[abso < 0] = 0
-    #         phase_field2[abso < 0] = 0
-    #         amp_field2 = np.exp(-abso)
-    #         field22 = amp_field2 * np.exp(1j * phase_field2)
-    #
-    #
-    #         # c) Forward propagation
-    #         field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels)
-    #         amp_field3 = np.abs(field3)
-    #         phase_field3 = np.angle(field3)
-    #         update_phase.append(phase_field3)
-    #
-    #
-    #         field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels)
-    #         amp_field4 = np.abs(field4)
-    #         last_field = field4
-    #         # Error calculation
-    #         if k > 0:
-    #             rms_error = np.sqrt(np.mean((amp_field4 - amp_field_after) ** 2))
-    #             rms_errors.append(rms_error)
-    #             print(f"Iteration {k}: RMS Error = {rms_error}")
-    #
-    #             ssim_value = ssim(amp_field_after, amp_field4, data_range=Measured_amplitude.max() - Measured_amplitude.min())
-    #             ssim_errors.append(ssim_value)
-    #             print(f"Iteration {k}: SSIM = {ssim_value}")
-    #
-    #             # threshold
-    #             if rms_error < convergence_threshold:
-    #                 print(f"Converged at iteration {k}")
-    #                 return last_field, rms_errors, ssim_errors
-    #     # Draw RMS
-    #     plt.subplot(2, 1, 1)
-    #     plt.plot(rms_errors, 'r-', linewidth=2, label='RMS Error')
-    #     plt.title('Convergence Analysis')
-    #     plt.ylabel('RMS Error')
-    #     plt.grid(True, linestyle='--', alpha=0.7)
-    #     plt.legend()
-    #
-    #     # Draw SSIM
-    #     plt.subplot(2, 1, 2)
-    #     plt.plot(ssim_errors, 'b-', linewidth=2, label='SSIM')
-    #     plt.xlabel('Iteration')
-    #     plt.ylabel('SSIM')
-    #     plt.grid(True, linestyle='--', alpha=0.7)
-    #     plt.legend()
-    #
-    #     plt.tight_layout()
-    #     plt.savefig('convergence_metrics.png', dpi=300)
-    #     plt.show()
-    #     return last_field, rms_errors, ssim_errors
-    #
-    # # --- Run IPR ---
-    # field_ite, rms_errors, ssim_errors = IPR(hologram_amplitude_noisy, z2, 80, 1.5e-20, pixelSize, W, H, numPixels, amp_field_after)
-    #
-    #
-    # # --- Draw image ---
-    # plt.figure(figsize=(6, 6))
-    # plt.imshow(np.abs(field_ite), cmap='gray')
-    # plt.colorbar(label="Reconstructed Amplitude")
-    # plt.title(f"Reconstructed Image (Pixel Size: {pixelSize*1e6}µm)")
-    # plt.axis('off')
-    # plt.show()
-    #
-    # print(f"Reconstruction for pixel size {pixelSize*1e6}µm completed.\n")
+
+    # --- Calculate the hologram ---
+    hologram_field = angular_spectrum_method(field_after_object, pixelSize, z2, W, H, numPixels)
+    print(hologram_field.size)
+    hologram_amplitude = np.abs(hologram_field)
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(hologram_amplitude, cmap='gray')
+    plt.colorbar(label="Reconstructed Amplitude")
+    plt.title(f"hologram (Pixel Size: {pixelSize}µm)")
+    plt.axis('off')
+    plt.show()
+
+    print(f"Saved hologram with pixel size {pixelSize}µm, resolution {numPixels}×{numPixels}")
+
+
+    # --- Adding noise---
+    # 1. Scaling (For IMX477, its full well capacity is 8000e-)
+    scaling_factor = 8000
+    ideal_intensity = (hologram_amplitude ** 2) * scaling_factor
+
+    # 2. Shot Noise
+    shot_noisy_intensity = np.random.poisson(ideal_intensity)
+    shot_noisy_intensity = shot_noisy_intensity / scaling_factor
+
+    # 3. Dark current noise
+    thermal_noise_std = 1 / scaling_factor
+    thermal_noise = np.random.normal(0, thermal_noise_std, ideal_intensity.shape)
+
+    # 4. Readout Noise
+    readout_noise_std = 3 / scaling_factor
+    readout_noise = np.random.normal(0, readout_noise_std, ideal_intensity.shape)
+
+    # 5. Quantization noise/ACD noise
+    # For IMX477 its bit depth of output can be 8/10/12, we assume we use 12 bit depth
+    quant_step_size = 2 ** 12 - 1
+    hologram_quantized = np.round(ideal_intensity * quant_step_size) / quant_step_size
+    quant_error = hologram_quantized - ideal_intensity
+
+    # 6. Sum up the noise
+    total_intensity = shot_noisy_intensity + thermal_noise + readout_noise + quant_error
+
+    # Make sure amplitude >= 0
+    total_intensity[total_intensity < 0] = 0
+
+    # 6. Convert to intensity form
+    hologram_amplitude_noisy = np.sqrt(total_intensity)
+
+
+    # --- IPR ---
+    def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after):
+        update_phase = []
+        last_field = None
+        rms_errors = []
+        ssim_errors = []
+
+        for k in range(k_max):
+            # a) Sensor plane
+            if k == 0:
+                phase0 = np.zeros(Measured_amplitude.shape)
+                field1 = Measured_amplitude * np.exp(1j * phase0)
+            else:
+                field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
+
+            # b) Backpropagation and apply constraint
+            field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels)
+            phase_field2 = np.angle(field2)  # phase
+            amp_field2 = np.abs(field2)  # amplitude
+            abso = -np.log(amp_field2)
+            # Apply constraints
+            abso[abso < 0] = 0
+            phase_field2[abso < 0] = 0
+            amp_field2 = np.exp(-abso)
+            field22 = amp_field2 * np.exp(1j * phase_field2)
+
+
+            # c) Forward propagation
+            field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels)
+            amp_field3 = np.abs(field3)
+            phase_field3 = np.angle(field3)
+            update_phase.append(phase_field3)
+
+
+            field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels)
+            amp_field4 = np.abs(field4)
+            last_field = field4
+            # Error calculation
+            if k > 0:
+                rms_error = np.sqrt(np.mean((amp_field4 - amp_field_after) ** 2))
+                rms_errors.append(rms_error)
+                print(f"Iteration {k}: RMS Error = {rms_error}")
+
+                ssim_value = ssim(amp_field_after, amp_field4, data_range=Measured_amplitude.max() - Measured_amplitude.min())
+                ssim_errors.append(ssim_value)
+                print(f"Iteration {k}: SSIM = {ssim_value}")
+
+                # threshold
+                if rms_error < convergence_threshold:
+                    print(f"Converged at iteration {k}")
+                    return last_field, rms_errors, ssim_errors
+        # Draw RMS
+        plt.subplot(2, 1, 1)
+        plt.plot(rms_errors, 'r-', linewidth=2, label='RMS Error')
+        plt.title('Convergence Analysis')
+        plt.ylabel('RMS Error')
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.legend()
+
+        # Draw SSIM
+        plt.subplot(2, 1, 2)
+        plt.plot(ssim_errors, 'b-', linewidth=2, label='SSIM')
+        plt.xlabel('Iteration')
+        plt.ylabel('SSIM')
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.legend()
+
+        plt.tight_layout()
+        plt.savefig('convergence_metrics.png', dpi=300)
+        plt.show()
+        return last_field, rms_errors, ssim_errors
+
+    # --- Run IPR ---
+    field_ite, rms_errors, ssim_errors = IPR(hologram_amplitude_noisy, z2, 80, 1.5e-20, pixelSize, W, H, numPixels, amp_field_after)
+
+
+    # --- Draw image ---
+    plt.figure(figsize=(6, 6))
+    plt.imshow(np.abs(field_ite), cmap='gray')
+    plt.colorbar(label="Reconstructed Amplitude")
+    plt.title(f"Reconstructed Image (Pixel Size: {pixelSize*1e6}µm)")
+    plt.axis('off')
+    plt.show()
+
+    print(f"Reconstruction for pixel size {pixelSize*1e6}µm completed.\n")
