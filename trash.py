@@ -96,7 +96,7 @@ for pixelSize in sensor_pixel_sizes:
     scaling_factor = 8000
     ideal_intensity = (hologram_amplitude ** 2) * scaling_factor
 
-    # 2. Shot Noise
+    # 2. Shot Noise 从整体上看是高斯分布查看，或者在每个像素上重复柏松分布
     shot_noisy_intensity = np.random.poisson(ideal_intensity)
     shot_noisy_intensity = shot_noisy_intensity / scaling_factor
 
