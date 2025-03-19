@@ -1,49 +1,52 @@
+import numpy as np
+import cv2
 import matplotlib.pyplot as plt
 
-# 像素尺寸（横坐标）
-pixel_sizes = [0.2, 1.6]
+# 1. 生成 1024x1024 的图像，并在 4x4 网格内生成小的不规则图形
+height, width = 1024, 1024
+image = np.zeros((height, width), dtype=np.uint8)
 
-# Sample 2 Without Noise
-rms_wo_noise  = [0.0806, 0.0980]
-ssim_wo_noise = [0.8623, 0.7123]
+grid_rows, grid_cols = 4, 4
+cell_height, cell_width = height // grid_rows, width // grid_cols
 
-# Sample 2 With Noise
-rms_w_noise   = [0.0808, 0.0990]
-ssim_w_noise  = [0.8614, 0.7115]
+for i in range(grid_rows):
+    for j in range(grid_cols):
+        # 当前网格的左上角坐标
+        x0, y0 = j * cell_width, i * cell_height
 
-# 创建画布与第一个坐标轴（用于绘制 RMS）
-fig, ax1 = plt.subplots(figsize=(6, 4))
+        # 随机生成 3~6 个顶点的不规则多边形
+        num_vertices = np.random.randint(3, 7)
 
-# 在同一张图上创建第二个坐标轴（用于绘制 SSIM）
-ax2 = ax1.twinx()
+        # 设置边距，避免图形过大
+        margin_x = int(cell_width * 0.2)
+        margin_y = int(cell_height * 0.2)
 
-# 绘制 RMS (左 y 轴)
-line1 = ax1.plot(pixel_sizes, rms_wo_noise, color='blue', marker='^',
-                 label='RMS (Without Noise)')
-line2 = ax1.plot(pixel_sizes, rms_w_noise,  color='green', marker='^',
-                 label='RMS (With Noise)')
+        pts = []
+        for _ in range(num_vertices):
+            x = np.random.randint(x0 + margin_x, x0 + cell_width - margin_x)
+            y = np.random.randint(y0 + margin_y, y0 + cell_height - margin_y)
+            pts.append([x, y])
+        pts = np.array(pts, np.int32).reshape((-1, 1, 2))
 
-# 绘制 SSIM (右 y 轴)
-line3 = ax2.plot(pixel_sizes, ssim_wo_noise, color='red', marker='s',
-                 label='SSIM (Without Noise)')
-line4 = ax2.plot(pixel_sizes, ssim_w_noise,  color='purple', marker='s',
-                 label='SSIM (With Noise)')
+        # 填充多边形区域，图形内灰度为 1
+        cv2.fillPoly(image, [pts], 1)
 
-# 设置坐标轴标题
-ax1.set_xlabel('Pixel Size (μm)')
-ax1.set_ylabel('RMS')
-ax2.set_ylabel('SSIM')
+# 2. 提取图形部分（非零区域）的最小外接矩形
+coords = np.column_stack(np.where(image > 0))
+if coords.size == 0:
+    # 若图像中没有非零像素，则保持原图
+    cropped = image
+else:
+    y_min, x_min = coords.min(axis=0)
+    y_max, x_max = coords.max(axis=0) + 1  # 包含最后一个像素
+    cropped = image[y_min:y_max, x_min:x_max]
 
-# 设置图表标题
-plt.title('Sample 2: RMS & SSIM (With/Without Noise)')
+# 3. 保存裁剪后的图像到文件（注意保存时将灰度 1 映射为 255）
+cv2.imwrite('pic/cropped_image.png', cropped * 255)
 
-# 组合图例（因为有双轴，需要把各自的线条收集起来）
-lines = line1 + line2 + line3 + line4
-labels = [l.get_label() for l in lines]
-ax1.legend(lines, labels, loc='best')
-
-# 开启网格（仅对第一个轴有效，若想对第二个轴也加网格可单独设置）
-ax1.grid(True)
-
-plt.tight_layout()
+# 显示裁剪后的图像
+plt.figure(figsize=(6, 6))
+plt.imshow(cropped, cmap='gray', vmin=0, vmax=1)
+plt.title("Cropped Image")
+plt.axis('off')
 plt.show()
