@@ -26,7 +26,7 @@ def bandlimit_filter(image, pixelSize):
     FX, FY = np.meshgrid(f, f)
     f_magnitude = np.sqrt(FX ** 2 + FY ** 2)
     #  Nyquist frequency
-    f_max = 1 / (2 * pixelSize)
+    f_max = 343750 # 1 / (2 * pixelSize)
     mask = f_magnitude <= f_max
     F_filtered = F * mask
     image_filtered = ifft2(ifftshift(F_filtered))
@@ -118,7 +118,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-object = load_and_normalize_image('pic/full_image.png')
+object = load_and_normalize_image('pic/cell_sample.png')
 
 # --- Set pixel size of the image and sensor ---
 sensor_pixel_sizes = [0.4e-6, 1.6e-6]  # 1µm for image, 1.6µm for sensor
@@ -137,16 +137,16 @@ am_object_filtered = np.abs(object_filtered)
 am_object = np.abs(object)
 
 # --- Plot the two images ---
-plt.figure(figsize=(12, 6))
-plt.subplot(1, 2, 1)
-plt.imshow(am_object, cmap='gray')
-plt.title("Original Image")
-plt.axis('off')
-plt.subplot(1, 2, 2)
-plt.imshow(am_object_filtered, cmap='gray')
-plt.title("Bandlimited Image")
-plt.axis('off')
-plt.show()
+# plt.figure(figsize=(12, 6))
+# plt.subplot(1, 2, 1)
+# plt.imshow(am_object, cmap='gray')
+# plt.title("Original Image")
+# plt.axis('off')
+# plt.subplot(1, 2, 2)
+# plt.imshow(am_object_filtered, cmap='gray')
+# plt.title("Bandlimited Image")
+# plt.axis('off')
+# plt.show()
 
 # ---Define the sample field ---
 am = np.exp(-1.6 * object_filtered)
@@ -154,17 +154,17 @@ ph0 = 3
 ph = ph0 * object_filtered
 object_field = am * np.exp(1j * ph)
 am_object_field = np.abs(object_field)
-plot_image(am_object_field)
+# plot_image(am_object_field)
 
 # --- Acquire the hologram ---
 hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, 1024)
 am_hologram = np.abs(hologram_field)
-plot_image(am_hologram)
+# plot_image(am_hologram)
 
 # --- Downsample the hologram based on the sensor pixel size ---
 undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
 am_undersampled_hologram = downscale_local_mean(am_hologram, (undersample_factor, undersample_factor))
-plot_image(am_undersampled_hologram)
+# plot_image(am_undersampled_hologram)
 am_object_field_down = downscale_local_mean(am_object_field, (undersample_factor, undersample_factor))
 plot_image(am_object_field_down)
 
@@ -179,7 +179,7 @@ W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 # At first, I will just consider the white Guassian noise. If nothing wrong then I will go deeper.
 scaling_factor = 8000 # Assume full well capacity is 8000e-
 ideal_intensity = (am_undersampled_hologram ** 2) * scaling_factor # Transform intensity to the scale of photons or electrons
-noise_electrons = 1000 # Choose the number of noise electrons
+noise_electrons = 750 # Choose the number of noise electrons
 noise_standard = noise_electrons / scaling_factor # Transform noise form scale of electrons to scale of intensity
 white_Gaussian_noise = np.random.normal(0, noise_standard, ideal_intensity.shape) # Simulate the noise
 am_hologram_with_noise = am_undersampled_hologram + white_Gaussian_noise
@@ -191,7 +191,7 @@ SNR = 10 * np.log10(signal_power / noise_power)
 
 
 # --- Reconstruction based on IPR algo ---
-rec_field, rms_errors, ssim_errors = IPR(am_hologram_with_noise, z2, 80, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down)
+rec_field, rms_errors, ssim_errors = IPR(am_hologram_with_noise, z2, 400, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down)
 am_rec_field = np.abs(rec_field)
 plot_image(am_rec_field)
 print("SNR is %f dB" % SNR)
