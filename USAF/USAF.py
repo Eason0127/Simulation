@@ -4,7 +4,7 @@ from numpy.fft import fft2, ifft2, fftshift, ifftshift
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 from skimage.transform import downscale_local_mean
-import cairosvg
+
 
 def load_and_normalize_image(filepath):
     image = Image.open(filepath).convert('L')
@@ -119,8 +119,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-cairosvg.svg2png(url='pic/USAF-1951.svg', write_to='USAF_target.png')
-object = load_and_normalize_image('USAF/USAF_target.png')
+object = load_and_normalize_image('')
 plt.figure(figsize=(6, 6))
 plt.imshow(object, cmap='gray')
 plt.title("Converted USAF Target")
@@ -128,10 +127,10 @@ plt.axis('off')
 plt.show()
 
 # --- Set pixel size of the image and sensor ---
-sensor_pixel_sizes = [0.4e-6, 1.6e-6]  # 1µm for image, 1.6µm for sensor
-numPixels_image = 1024  # The dimension of the image
+sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 1µm for image, 1.6µm for sensor
+numPixels_image = 10560  # The dimension of the image
 FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
-z2 = 0.005  # Sample to sensor distance
+z2 = 0.001  # Sample to sensor distance
 
 # --- Define the spatial grid ---
 x = np.arange(numPixels_image) - numPixels_image / 2 - 1
@@ -164,7 +163,7 @@ am_object_field = np.abs(object_field)
 plot_image(am_object_field)
 
 # --- Acquire the hologram ---
-hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, 1024)
+hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, numPixels_image)
 am_hologram = np.abs(hologram_field)
 # plot_image(am_hologram)
 
