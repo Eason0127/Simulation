@@ -119,7 +119,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-object = load_and_normalize_image('')
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/USAF/padded_image.png')
 plt.figure(figsize=(6, 6))
 plt.imshow(object, cmap='gray')
 plt.title("Converted USAF Target")
@@ -127,7 +127,7 @@ plt.axis('off')
 plt.show()
 
 # --- Set pixel size of the image and sensor ---
-sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 1µm for image, 1.6µm for sensor
+sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 0.2µm for image, 1.6µm for sensor
 numPixels_image = 10560  # The dimension of the image
 FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
 z2 = 0.001  # Sample to sensor distance
@@ -199,9 +199,11 @@ SNR = 10 * np.log10(signal_power / noise_power)
 
 
 # --- Reconstruction based on IPR algo ---
-rec_field, rms_errors, ssim_errors = IPR(am_hologram_with_noise, z2, 400, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down)
+rec_field, rms_errors, ssim_errors = IPR(am_hologram_with_noise, z2, 100, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down)
 am_rec_field = np.abs(rec_field)
 plot_image(am_rec_field)
 print("SNR is %f dB" % SNR)
+
+
 
 
