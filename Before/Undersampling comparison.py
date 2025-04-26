@@ -18,7 +18,7 @@ def load_and_normalize_image(filepath):
     grayscale_data = np.array(image, dtype=np.float32)
     return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
 
-object = load_and_normalize_image('pic/microscopic_sample_no_grid.png')
+object = load_and_normalize_image('../pic/microscopic_sample_no_grid.png')
 
 # --- 角谱传播方法 ---
 def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels):

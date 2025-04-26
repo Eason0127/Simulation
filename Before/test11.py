@@ -33,6 +33,28 @@ def plot_field(field, title="Complex Field", cmap="viridis"):
     plt.show()
 
 
+def plot_FX_FY(FX, FY):
+
+    plt.figure(figsize=(12, 6))
+
+    # Plot FX
+    plt.subplot(1, 2, 1)
+    plt.title("FX (Normalized Spatial Frequency)")
+    plt.imshow(FX, cmap='viridis', extent=[FX.min(), FX.max(), FY.min(), FY.max()])
+    plt.colorbar(label="FX")
+    plt.xlabel("x-axis frequency")
+    plt.ylabel("y-axis frequency")
+
+    # Plot FY
+    plt.subplot(1, 2, 2)
+    plt.title("FY (Normalized Spatial Frequency)")
+    plt.imshow(FY, cmap='viridis', extent=[FX.min(), FX.max(), FY.min(), FY.max()])
+    plt.colorbar(label="FY")
+    plt.xlabel("x-axis frequency")
+    plt.ylabel("y-axis frequency")
+
+    plt.tight_layout()
+    plt.show()
 
 
 def load_and_normalize_image(filepath):
@@ -53,7 +75,6 @@ def Transfer_function(W, H, distance, wavelength, area):
     temp = np.exp(1j * 2 * np.pi * distance / wavelength * square_root)
     # plot_FX_FY(FX, FY)
     return temp
-
 def angular_spectrum_method(field, area, distance, W, H):
     GT = fftshift(fft2(ifftshift(field)))
     gt_prime = fftshift(ifft2(ifftshift(GT * Transfer_function(W, H, distance, 532e-9, area))))
@@ -61,8 +82,8 @@ def angular_spectrum_method(field, area, distance, W, H):
 
 
 numPixels = 1024
-pixelSize = 2e-6 # unit: meter
-z2 = 0.005
+pixelSize = 4e-8 # unit: meter
+z2 = 0.0001
 area = numPixels * pixelSize
 # Define the sensor grid
 x = np.arange(numPixels) - numPixels / 2 - 1
@@ -71,7 +92,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('pic/microscopic_sample_no_grid.png')
+object = load_and_normalize_image('../pic/circle.png')
 plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3
@@ -82,6 +103,7 @@ plot_field(field_after_object)
 
 # acquire hologram
 hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
+hologram_field[W < H] = 0
 hologram_amplitude = np.abs(hologram_field)
 plot_field(hologram_field)
 
@@ -91,7 +113,6 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
     update_phase = []
     last_field = None
     rms_errors = []  # Store RMS errors for plotting
-    specific_iterations = {100}  # Iterations to add reduced-area support
     for k in range(k_max):
         # a) sensor plane
         if k == 0:
@@ -99,10 +120,6 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
             field1 = Measured_amplitude * np.exp(1j * phase0)
         else:
             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-            # if k < 1000:
-            #     random_noise = 0.05 * (np.random.rand(*Measured_amplitude.shape) + 1j * np.random.rand(*Measured_amplitude.shape))
-            #     field1 += random_noise
-
         # b) back-propagation and apply energy constraint
         field2 = angular_spectrum_method(field1, area, -distance, W, H)
         phase_field2 = np.angle(field2) # phase
@@ -113,10 +130,6 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
         phase_field2[abso < 0] = 0
         amp_field2 = np.exp(-abso)
         field22 = amp_field2 * np.exp(1j * phase_field2)
-        # Reduced support
-        # if k in specific_iterations:
-        #     mask = (W < H) & (W > -H)
-        #     field22[~mask] = 0
 
         # c) forward propagation and update amplitude
         field3 = angular_spectrum_method(field22, area, distance, W, H)
@@ -146,11 +159,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z2, 1000, 1.5e-8, area, W, H)
+field_ite = IPR(hologram_amplitude, z2, 1000, 1.5e-4, area, W, H)
 IPR_object = angular_spectrum_method(field_ite, area, -z2, W, H)
 plot_field(IPR_object)
-
-
-
-
 

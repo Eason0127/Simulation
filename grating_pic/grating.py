@@ -11,11 +11,11 @@ def load_and_normalize_image(filepath):
     grayscale_data = np.array(image, dtype=np.float32)
     return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
 
-def plot_image(amplitude,):
+def plot_image(amplitude,title):
     plt.figure(figsize=(6, 6))
     plt.imshow(amplitude, cmap='gray')
     plt.colorbar(label="Amplitude")
-    plt.title(f"Amplitude")
+    plt.title(title)
     plt.axis('off')
     plt.show()
 
@@ -27,7 +27,7 @@ def bandlimit_filter(image, pixelSize):
     FX, FY = np.meshgrid(f, f)
     f_magnitude = np.sqrt(FX ** 2 + FY ** 2)
     #  Nyquist frequency
-    f_max = 416667 # 1 / (2 * pixelSize)
+    f_max = 1 / (2 * pixelSize)
     mask = f_magnitude <= f_max
     F_filtered = F * mask
     image_filtered = ifft2(ifftshift(F_filtered))
@@ -119,14 +119,12 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/output_gratings/grating_gap_25.png')
-plt.figure(figsize=(6, 6))
-plt.imshow(object, cmap='gray')
-plt.show()
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/grating_pic/grating_30um.png')
+plot_image(object, "object")
 
 # --- Set pixel size of the image and sensor ---
-sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 1µm for image, 1.6µm for sensor
-numPixels_image = 462  # The dimension of the image
+sensor_pixel_sizes = [0.4e-6, 1.2e-6]  # 1µm for image, 1.6µm for sensor
+numPixels_image = 1024  # The dimension of the image
 FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
 z2 = 0.001  # Sample to sensor distance
 
@@ -135,42 +133,41 @@ x = np.arange(numPixels_image) - numPixels_image / 2 - 1
 y = np.arange(numPixels_image) - numPixels_image / 2 - 1
 W, H = np.meshgrid(x, y)
 
-# --- Filter the image before forward propagation ---
-object_filtered = bandlimit_filter(object, sensor_pixel_sizes[1])
-am_object_filtered = np.abs(object_filtered)
-am_object = np.abs(object)
-
-# --- Plot the two images ---
-plt.figure(figsize=(12, 6))
-plt.subplot(1, 2, 1)
-plt.imshow(am_object, cmap='gray')
-plt.title("Original Image")
-plt.axis('off')
-plt.subplot(1, 2, 2)
-plt.imshow(am_object_filtered, cmap='gray')
-plt.title("Bandlimited Image")
-plt.axis('off')
-plt.show()
-
 # ---Define the sample field ---
-am = np.exp(-1.6 * object_filtered)
 ph0 = 3
-ph = ph0 * object_filtered
-object_field = am * np.exp(1j * ph)
+ph = ph0 * object
+object_field = object * np.exp(1j * ph)
 am_object_field = np.abs(object_field)
-# plot_image(am_object_field)
+plot_image(am_object_field,"sample field")
+
 
 # --- Acquire the hologram ---
 hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, numPixels_image)
 am_hologram = np.abs(hologram_field)
-plot_image(am_hologram)
+plot_image(am_hologram, "hologram")
+
+# --- Filter the hologram ---
+hologram_filtered = bandlimit_filter(hologram_field, sensor_pixel_sizes[1])
+am_hologram_filtered = np.abs(hologram_filtered)
+
+# --- Plot the two images ---
+plt.figure(figsize=(12, 6))
+plt.subplot(1, 2, 1)
+plt.imshow(am_hologram, cmap='gray')
+plt.title("Original hologram")
+plt.axis('off')
+plt.subplot(1, 2, 2)
+plt.imshow(am_hologram_filtered, cmap='gray')
+plt.title("Bandlimited hologram")
+plt.axis('off')
+plt.show()
 
 # --- Downsample the hologram based on the sensor pixel size ---
 undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
-am_undersampled_hologram = am_hologram[::undersample_factor, ::undersample_factor]
+am_undersampled_hologram = am_hologram_filtered[::undersample_factor, ::undersample_factor]
 am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
-# plot_image(am_object_field_down)
-plot_image(am_undersampled_hologram)
+plot_image(am_object_field_down, "object_field_down")
+plot_image(am_undersampled_hologram,"undersampled hologram")
 
 
 # --- Create the sensor grid ---
@@ -181,7 +178,7 @@ W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 
 
 # --- Reconstruction based on IPR algo ---
-rec_field, rms_errors, ssim_errors = IPR(am_undersampled_hologram, z2, 400, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down)
+rec_field, rms_errors, ssim_errors = IPR(am_undersampled_hologram, z2, 100, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down)
 am_rec_field = np.abs(rec_field)
-plot_image(am_rec_field)
+plot_image(am_rec_field,"rec_field")
 
