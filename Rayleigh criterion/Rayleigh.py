@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift, fft, fftfreq
 from PIL import Image
@@ -12,13 +14,13 @@ def load_and_normalize_image(filepath):
     return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
 
 # --- Plot image ---
-def plot_image(amplitude,title):
-    plt.figure(figsize=(6, 6))
-    plt.imshow(amplitude, cmap='gray')
-    plt.colorbar(label="Amplitude")
-    plt.title(title)
-    plt.axis('off')
-    plt.show()
+def plot_image(amplitude, title):
+    fig, ax = plt.subplots(figsize=(6,6))
+    im = ax.imshow(amplitude, cmap='gray')
+    fig.colorbar(im, ax=ax, label="Amplitude")
+    ax.set(title=title, xticks=[], yticks=[])
+    fig.savefig(title, dpi=300)
+    plt.close(fig)
 
 # --- Filter image ---
 def bandlimit_filter(image, pixelSize):
@@ -170,14 +172,17 @@ plot_image(in_hologram,"hologram field")
 undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
 sampled_hologram_size = am_hologram[::undersample_factor, ::undersample_factor]
 am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
+print("1")
 
 # --- Create the sensor grid ---
 numPixels_sensor = sampled_hologram_size.shape[0]
 x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
 y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
 W_sen, H_sen = np.meshgrid(x_sen, y_sen)
+print("2")
 
 # --- Pixel aperture effect ---
+print("3")
 m = W / (numPixels_image * sensor_pixel_sizes[0])
 n = H / (numPixels_image * sensor_pixel_sizes[0])
 FX, FY = np.meshgrid(m, n)
@@ -185,6 +190,7 @@ Pixel_TF = np.sinc(FX * sensor_pixel_sizes[1]) * np.sinc(FY * sensor_pixel_sizes
 hologram_fft = fftshift(fft2(ifftshift(hologram_field)))
 hologram_fft_window = hologram_fft * Pixel_TF
 hologram_field_filtered = fftshift(ifft2(ifftshift(hologram_fft_window)))
+print("4")
 center = np.arange(undersample_factor//2, numPixels_image, undersample_factor)
 Sampled_hologram_field = hologram_field_filtered[center[:,None], center]
 Sampled_hologram = Sampled_hologram_field ** 2
