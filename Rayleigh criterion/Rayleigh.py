@@ -1,15 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy.fft import fft2, ifft2, fftshift, ifftshift
+from numpy.fft import fft2, ifft2, fftshift, ifftshift, fft, fftfreq
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 from skimage.transform import downscale_local_mean
 
+# --- Read image and normalization ---
 def load_and_normalize_image(filepath):
     image = Image.open(filepath).convert('L')
     grayscale_data = np.array(image, dtype=np.float32)
     return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
 
+# --- Plot image ---
 def plot_image(amplitude,title):
     plt.figure(figsize=(6, 6))
     plt.imshow(amplitude, cmap='gray')
@@ -18,6 +20,7 @@ def plot_image(amplitude,title):
     plt.axis('off')
     plt.show()
 
+# --- Filter image ---
 def bandlimit_filter(image, pixelSize):
     N = image.shape[0]
     F = fftshift(fft2(image))
@@ -32,24 +35,30 @@ def bandlimit_filter(image, pixelSize):
     image_filtered = ifft2(ifftshift(F_filtered))
     return image_filtered
 
-def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels):
+# --- Transfer function + filter evanescent wave ---
+def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels, f_cut):
     FX = W / (pixelSize * numPixels)
     FY = H / (pixelSize * numPixels)
     k = 2 * np.pi / wavelength
-    square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
-    valid_mask = (wavelength ** 2 * FX ** 2 + wavelength ** 2 * FY ** 2) <= 1
-    square_root[~valid_mask] = 0
-    temp = np.exp(1j * k * distance * square_root)
-    return temp
+    a = 1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2)
+    square_root = np.sqrt(np.clip(a, 0, None))
+    Hf = np.exp(1j * k * distance * square_root)
+    # Evanescent wave filtering
+    valid_mask = a >= 0 # Evanescent wave filtering
+    NA_mask = FX ** 2 + FY ** 2 <= f_cut ** 2 # NA limitation filtering
+    total_mask = valid_mask & NA_mask
+    Hf[~total_mask] = 0
+    return Hf
 
-def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels):
+# --- Angular spectrum method ---
+def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels, wavelength, f_cut):
     GT = fftshift(fft2(ifftshift(field)))
-    transfer = Transfer_function(W, H, distance, 532e-9, pixelSize, numPixels)
+    transfer = Transfer_function(W, H, distance, wavelength, pixelSize, numPixels, f_cut)
     gt_prime = fftshift(ifft2(ifftshift(GT * transfer)))
     return gt_prime
 
 # --- IPR ---
-def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after):
+def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after, wavelength, f_cut):
     update_phase = []
     last_field = None
     rms_errors = []
@@ -63,7 +72,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
         else:
             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
         # b) Backpropagation and apply constraint
-        field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels)
+        field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels, wavelength, f_cut)
         phase_field2 = np.angle(field2)  # phase
         amp_field2 = np.abs(field2)  # amplitude
         abso = -np.log(amp_field2 + 1e-8) #1e-8 to prevent 0 value
@@ -73,13 +82,13 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
         amp_field2 = np.exp(-abso)
         field22 = amp_field2 * np.exp(1j * phase_field2)
         # c) Forward propagation
-        field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels)
+        field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels, wavelength, f_cut)
         amp_field3 = np.abs(field3)
         phase_field3 = np.angle(field3)
         update_phase.append(phase_field3)
 
         # d) Backpropagate to get the image
-        field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels)
+        field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels, wavelength, f_cut)
         amp_field4 = np.abs(field4)
         last_field = field4
         # Error calculation
@@ -118,15 +127,14 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-Image.MAX_IMAGE_PIXELS = 200_000_000
-object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/USAF/padded_gray_white.png')
-plot_image(object, "object")
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/2.png')
 
 # --- Set pixel size of the image and sensor ---
-sensor_pixel_sizes = [0.4e-6, 1.6e-6]  # 0.2µm for image, 1.6µm for sensor
-numPixels_image = 10560  # The dimension of the image
+sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 0.2µm for image, 1.6µm for sensor
+numPixels_image = 1024  # The dimension of the image
 FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
 z2 = 0.0005  # Sample to sensor distance
+wavelength = 532e-9 # Wavelength
 
 # --- Define the spatial grid ---
 x = np.arange(numPixels_image) - numPixels_image / 2 - 1
@@ -138,18 +146,6 @@ W, H = np.meshgrid(x, y)
 # am_object_filtered = np.abs(object_filtered)
 # am_object = np.abs(object)
 
-# --- Plot the two images ---
-# plt.figure(figsize=(12, 6))
-# plt.subplot(1, 2, 1)
-# plt.imshow(am_object, cmap='gray')
-# plt.title("Original Image")
-# plt.axis('off')
-# plt.subplot(1, 2, 2)
-# plt.imshow(am_object_filtered, cmap='gray')
-# plt.title("Bandlimited Image")
-# plt.axis('off')
-# plt.show()
-
 # ---Define the sample field ---
 am = np.exp(-2 * object)
 ph0 = 3
@@ -158,36 +154,51 @@ object_field = am * np.exp(1j * ph)
 am_object_field = np.abs(object_field)
 plot_image(am_object_field,"sample field")
 
+# --- The Filtering issue due to NA limitation ---
+# This cut-off frequency is input into the transfer function
+NA = (FOV / 2) / np.sqrt((FOV / 2) ** 2 + z2 ** 2) # Numerical Aperture
+f_cut = NA / wavelength # The lateral frequency on sensor plane
+
+
 # --- Acquire the hologram ---
-hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, numPixels_image)
+hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, numPixels_image, wavelength, f_cut)
 in_hologram = np.abs(hologram_field) ** 2
 am_hologram = np.sqrt(in_hologram)
 plot_image(in_hologram,"hologram field")
 
-# --- Downsample the hologram based on the sensor pixel size ---
+# --- Calculate the dimension of sampled hologram ---
 undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
-am_undersampled_hologram = am_hologram[::undersample_factor, ::undersample_factor]
+sampled_hologram_size = am_hologram[::undersample_factor, ::undersample_factor]
 am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
-plot_image(am_object_field_down, "undersampled object field")
-plot_image(am_undersampled_hologram,"undersampled hologram field")
-
 
 # --- Create the sensor grid ---
-numPixels_sensor = am_undersampled_hologram.shape[0]
+numPixels_sensor = sampled_hologram_size.shape[0]
 x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
 y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
 W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 
+# --- Pixel aperture effect ---
+m = W / (numPixels_image * sensor_pixel_sizes[0])
+n = H / (numPixels_image * sensor_pixel_sizes[0])
+FX, FY = np.meshgrid(m, n)
+Pixel_TF = np.sinc(FX * sensor_pixel_sizes[1]) * np.sinc(FY * sensor_pixel_sizes[1])
+hologram_fft = fftshift(fft2(ifftshift(hologram_field)))
+hologram_fft_window = hologram_fft * Pixel_TF
+hologram_field_filtered = fftshift(ifft2(ifftshift(hologram_fft_window)))
+center = np.arange(undersample_factor//2, numPixels_image, undersample_factor)
+Sampled_hologram_field = hologram_field_filtered[center[:,None], center]
+Sampled_hologram = Sampled_hologram_field ** 2
+plot_image(Sampled_hologram,"hologram sampled")
+
 # --- Adding noise ---
-# At first, I will just consider the white Guassian noise. If nothing wrong then I will go deeper.
-scaling_factor = 8000 # Assume full well capacity is 8000e-
-ideal_intensity = (am_undersampled_hologram ** 2) * scaling_factor # Transform intensity to the scale of photons or electrons
-noise_electrons = 0 # Choose the number of noise electrons
-noise_standard = noise_electrons / scaling_factor # Transform noise form scale of electrons to scale of intensity
-white_Gaussian_noise = np.random.normal(0, noise_standard, ideal_intensity.shape) # Simulate the noise
-am_noise = np.abs(white_Gaussian_noise)
-# plot_image(am_noise)
-am_hologram_with_noise = am_undersampled_hologram + white_Gaussian_noise
+# scaling_factor = 8000 # Assume full well capacity is 8000e-
+# ideal_intensity = (am_undersampled_hologram ** 2) * scaling_factor # Transform intensity to the scale of photons or electrons
+# noise_electrons = 0 # Choose the number of noise electrons
+# noise_standard = noise_electrons / scaling_factor # Transform noise form scale of electrons to scale of intensity
+# white_Gaussian_noise = np.random.normal(0, noise_standard, ideal_intensity.shape) # Simulate the noise
+# am_noise = np.abs(white_Gaussian_noise)
+# # plot_image(am_noise)
+# am_hologram_with_noise = am_undersampled_hologram + white_Gaussian_noise
 
 # --- Calculate SNR ---
 # noise_power = np.mean(white_Gaussian_noise ** 2)
@@ -196,11 +207,39 @@ am_hologram_with_noise = am_undersampled_hologram + white_Gaussian_noise
 
 
 # --- Reconstruction based on IPR algo ---
-rec_field, rms_errors, ssim_errors = IPR(am_hologram_with_noise, z2, 50, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down)
+rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
 am_rec_field = np.abs(rec_field)
 plot_image(am_rec_field, "rec field")
-# print("SNR is %f dB" % SNR)
 
+# --- PSF ---
+y_index = 86
+PSF_pre = am_rec_field[y_index, :]
+PSF = np.abs(PSF_pre) ** 2
+x_axis = x_sen
+# plot
+plt.figure(figsize=(8,4))
+plt.plot(x_axis, PSF, linewidth=2)
+plt.xlabel('x')
+plt.ylabel('Intensity')
+plt.title(f'PSF')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.show()
 
+# # --- MTF ---
+# Np = PSF.size
+# print(Np)
+# OTF1d = fftshift(fft(ifftshift(PSF)))         # 1D OTF
+# MTF1d = np.abs(OTF1d)
+# MTF1d /= MTF1d.max()
+# F_x = x_axis / (Np * sensor_pixel_sizes[1])
+# plt.figure(figsize=(6,4))
+# plt.plot(F_x, MTF1d, linewidth=2)
+# plt.xlabel('Spatial frequency (1/m)')
+# plt.ylabel('MTF')
+# plt.title('1D MTF from PSF profile')
+# plt.grid(True, linestyle='--', alpha=0.7)
+# plt.tight_layout()
+# plt.show()
 
 

@@ -1,26 +1,34 @@
-import numpy as np
-import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw
 
-# --- 参数设定 ---
-numPixels = 1024              # 输出图像分辨率 1024×1024
-pixel_size = 0.4e-6           # 新的像素大小：0.4 μm
+# 创建一个 1024x1024 的白色画布
+img = Image.new('RGB', (1024, 1024), 'white')
+draw = ImageDraw.Draw(img)
 
-# 构造像素坐标索引
-x = np.arange(numPixels) - numPixels/2
-# 物理坐标（米），直接用新的 pixel_size
-x_phys = x * pixel_size
+# 圆的参数
+radius = 5       # 半径 = 5 像素（直径 = 10 像素）
+spacing = 14     # 两个圆边缘间距 = 50 像素
 
-# --- 要生成的光栅周期列表（单位：米） ---
-periods = [4e-6, 10e-6, 15e-6, 20e-6, 25e-6, 30e-6]
+# 计算水平居中时两个圆心的坐标
+total_width = 2 * (2 * radius) + spacing
+left_edge = (1024 - total_width) / 2
+center_x1 = left_edge + radius
+center_x2 = center_x1 + 2 * radius + spacing
+center_y = 1024 / 2
 
-# --- 逐个生成并保存 ---
-for P in periods:
-    f = 1.0 / P                                # 物理频率（cycles/m），保持不变
-    am_1d = 0.5 + 0.5 * np.sin(2 * np.pi * f * x_phys)
-    am_2d = np.tile(am_1d, (numPixels, 1))    # 复制成二维
+# 画第一个圆
+draw.ellipse(
+    (center_x1 - radius, center_y - radius,
+     center_x1 + radius, center_y + radius),
+    fill='black'
+)
 
-    # 文件名仍用物理周期标注（微米）
-    fname = f'grating_{int(P*1e6):d}um.png'
+# 画第二个圆
+draw.ellipse(
+    (center_x2 - radius, center_y - radius,
+     center_x2 + radius, center_y + radius),
+    fill='black'
+)
 
-    # 直接保存，无标题无坐标轴，输出 1024×1024
-    plt.imsave(fname, am_2d, cmap='gray', vmin=0, vmax=1)
+# 保存为 PNG 文件
+img.save('2,8.png')
+print("图片已保存为 5.png")
