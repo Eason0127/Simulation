@@ -129,7 +129,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/2.png')
+object = load_and_normalize_image('C:/Phythonthings/github/Simulation/Rayleigh criterion/4.png')
 
 # --- Set pixel size of the image and sensor ---
 sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 0.2µm for image, 1.6µm for sensor
@@ -183,9 +183,8 @@ print("2")
 
 # --- Pixel aperture effect ---
 print("3")
-m = W / (numPixels_image * sensor_pixel_sizes[0])
-n = H / (numPixels_image * sensor_pixel_sizes[0])
-FX, FY = np.meshgrid(m, n)
+FX = W / (numPixels_image * sensor_pixel_sizes[0])
+FY = H / (numPixels_image * sensor_pixel_sizes[0])
 Pixel_TF = np.sinc(FX * sensor_pixel_sizes[1]) * np.sinc(FY * sensor_pixel_sizes[1])
 hologram_fft = fftshift(fft2(ifftshift(hologram_field)))
 hologram_fft_window = hologram_fft * Pixel_TF
@@ -193,7 +192,7 @@ hologram_field_filtered = fftshift(ifft2(ifftshift(hologram_fft_window)))
 print("4")
 center = np.arange(undersample_factor//2, numPixels_image, undersample_factor)
 Sampled_hologram_field = hologram_field_filtered[center[:,None], center]
-Sampled_hologram = Sampled_hologram_field ** 2
+Sampled_hologram = np.abs(Sampled_hologram_field) ** 2
 plot_image(Sampled_hologram,"hologram sampled")
 
 # --- Adding noise ---
