@@ -1,11 +1,10 @@
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift, fft, fftfreq
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
-from skimage.transform import downscale_local_mean
+from scipy.signal import find_peaks
+
 
 # --- Read image and normalization ---
 def load_and_normalize_image(filepath):
@@ -14,13 +13,13 @@ def load_and_normalize_image(filepath):
     return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
 
 # --- Plot image ---
-def plot_image(amplitude, title):
-    fig, ax = plt.subplots(figsize=(6,6))
-    im = ax.imshow(amplitude, cmap='gray')
-    fig.colorbar(im, ax=ax, label="Amplitude")
-    ax.set(title=title, xticks=[], yticks=[])
-    fig.savefig(title, dpi=300)
-    plt.close(fig)
+def plot_image(amplitude,title):
+    plt.figure(figsize=(6, 6))
+    plt.imshow(amplitude, cmap='gray')
+    plt.colorbar(label="Amplitude")
+    plt.title(title)
+    plt.axis('off')
+    plt.show()
 
 # --- Filter image ---
 def bandlimit_filter(image, pixelSize):
@@ -129,13 +128,13 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-object = load_and_normalize_image('C:/Phythonthings/github/Simulation/Rayleigh criterion/4.png')
-
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/5_test.png')
+period = int(6e-6 / 0.2e-6)
 # --- Set pixel size of the image and sensor ---
 sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 0.2µm for image, 1.6µm for sensor
 numPixels_image = 1024  # The dimension of the image
 FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
-z2 = 0.0005  # Sample to sensor distance
+z2 = 0.0001  # Sample to sensor distance
 wavelength = 532e-9 # Wavelength
 
 # --- Define the spatial grid ---
@@ -172,24 +171,20 @@ plot_image(in_hologram,"hologram field")
 undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
 sampled_hologram_size = am_hologram[::undersample_factor, ::undersample_factor]
 am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
-print("1")
 
 # --- Create the sensor grid ---
 numPixels_sensor = sampled_hologram_size.shape[0]
 x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
 y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
 W_sen, H_sen = np.meshgrid(x_sen, y_sen)
-print("2")
 
 # --- Pixel aperture effect ---
-print("3")
 FX = W / (numPixels_image * sensor_pixel_sizes[0])
 FY = H / (numPixels_image * sensor_pixel_sizes[0])
 Pixel_TF = np.sinc(FX * sensor_pixel_sizes[1]) * np.sinc(FY * sensor_pixel_sizes[1])
 hologram_fft = fftshift(fft2(ifftshift(hologram_field)))
 hologram_fft_window = hologram_fft * Pixel_TF
 hologram_field_filtered = fftshift(ifft2(ifftshift(hologram_fft_window)))
-print("4")
 center = np.arange(undersample_factor//2, numPixels_image, undersample_factor)
 Sampled_hologram_field = hologram_field_filtered[center[:,None], center]
 Sampled_hologram = np.abs(Sampled_hologram_field) ** 2
@@ -216,20 +211,44 @@ rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sens
 am_rec_field = np.abs(rec_field)
 plot_image(am_rec_field, "rec field")
 
-# --- PSF ---
-y_index = 86
-PSF_pre = am_rec_field[y_index, :]
-PSF = np.abs(PSF_pre) ** 2
-x_axis = x_sen
-# plot
+# --- Contrast ---
+y_index = 65
+value = am_rec_field[y_index, :]
+PSF = np.abs(value) ** 2
 plt.figure(figsize=(8,4))
-plt.plot(x_axis, PSF, linewidth=2)
-plt.xlabel('x')
+plt.plot(x_sen, PSF, linewidth=2)
+plt.xlabel('x (m)')
 plt.ylabel('Intensity')
-plt.title(f'PSF')
+plt.title('PSF Profile')
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.tight_layout()
 plt.show()
+peaks, _ = find_peaks(PSF, height = None, distance = period * 0.7)
+troughs, _ = find_peaks(-PSF, height = None, distance = period * 0.7)
+I_max = PSF[peaks].mean()
+I_min = PSF[troughs].mean()
+print(f"I_max = {I_max}, I_min = {I_min}")
+C = (I_max - I_min) / (I_max + I_min)
+print(f"Contrast = {C}")
+if C >= 0.1:
+    print("It's resolved!")
+else:
+    print("It's not resolved!")
+
+# --- PSF ---
+# y_index = 86
+# PSF_pre = am_rec_field[y_index, :]
+# PSF = np.abs(PSF_pre) ** 2
+# x_axis = x_sen
+# # plot
+# plt.figure(figsize=(8,4))
+# plt.plot(x_axis, PSF, linewidth=2)
+# plt.xlabel('x')
+# plt.ylabel('Intensity')
+# plt.title(f'PSF')
+# plt.grid(True, linestyle='--', alpha=0.7)
+# plt.tight_layout()
+# plt.show()
 
 # # --- MTF ---
 # Np = PSF.size

@@ -1,34 +1,35 @@
-from PIL import Image, ImageDraw
+import numpy as np
+from PIL import Image
 
-# 创建一个 1024x1024 的白色画布
-img = Image.new('RGB', (1024, 1024), 'white')
-draw = ImageDraw.Draw(img)
+# Image parameters
+img_size = 1024
+px_size_um = 0.2
+spacing_um = 14.0
 
-# 圆的参数
-radius = 5       # 半径 = 5 像素（直径 = 10 像素）
-spacing = 14     # 两个圆边缘间距 = 50 像素
+# Convert physical spacing to pixel period
+period_px = int(spacing_um / px_size_um)
+stripe_width = period_px // 2
 
-# 计算水平居中时两个圆心的坐标
-total_width = 2 * (2 * radius) + spacing
-left_edge = (1024 - total_width) / 2
-center_x1 = left_edge + radius
-center_x2 = center_x1 + 2 * radius + spacing
-center_y = 1024 / 2
+# Create a blank (black) image
+img = np.zeros((img_size, img_size), dtype=np.uint8)
 
-# 画第一个圆
-draw.ellipse(
-    (center_x1 - radius, center_y - radius,
-     center_x1 + radius, center_y + radius),
-    fill='black'
-)
+# Define the central square region (512x512)
+region_size = img_size // 2
+start = (img_size - region_size) // 2
+end = start + region_size
 
-# 画第二个圆
-draw.ellipse(
-    (center_x2 - radius, center_y - radius,
-     center_x2 + radius, center_y + radius),
-    fill='black'
-)
+# Draw vertical stripes in the top half
+for x in range(start, end):
+    if ((x - start) // stripe_width) % 2 == 0:
+        img[start:start + region_size // 2, x] = 255
 
-# 保存为 PNG 文件
-img.save('2,8.png')
-print("图片已保存为 5.png")
+# Draw horizontal stripes in the bottom half
+for y in range(start + region_size // 2, end):
+    if ((y - (start + region_size // 2)) // stripe_width) % 2 == 0:
+        img[y, start:end] = 255
+
+# Save the image
+output_path = 'Rayleigh criterion/14_test.png'
+Image.fromarray(img).save(output_path)
+print(f"Image saved to {output_path}")
+
