@@ -4,7 +4,8 @@ from numpy.fft import fft2, ifft2, fftshift, ifftshift, fft, fftfreq
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 from scipy.signal import find_peaks
-
+import os
+import re
 
 # --- Read image and normalization ---
 def load_and_normalize_image(filepath):
@@ -13,13 +14,24 @@ def load_and_normalize_image(filepath):
     return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
 
 # --- Plot image ---
-def plot_image(amplitude,title):
-    plt.figure(figsize=(6, 6))
-    plt.imshow(amplitude, cmap='gray')
-    plt.colorbar(label="Amplitude")
-    plt.title(title)
-    plt.axis('off')
+def plot_image(amplitude,title, save_dir, pixel, picture):
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(amplitude, cmap='gray')
+    fig.colorbar(im, ax=ax, label="Amplitude")
+    ax.set_title(title)
+    ax.axis('off')
     plt.show()
+    # —— 保存 ——
+    if save_dir is not None and pixel is not None and picture is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        filename = f"{pixel}-{picture}.png"
+        save_path = os.path.join(save_dir, filename)
+        fig.savefig(save_path, bbox_inches='tight')
+        plt.close(fig)
+        print(f"✅ 图像已保存到：{save_path}")
+    else:
+        # 如果不满足保存条件，仅关闭 figure
+        plt.close(fig)
 
 # --- Filter image ---
 def bandlimit_filter(image, pixelSize):
@@ -128,13 +140,19 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/4_test.png')
-period = int(6e-6 / 0.2e-6)
+file_path = '/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/9_test.png'
+file_name = os.path.basename(file_path)
+m = re.search(r'(\d+(?:\.\d+)?)_test', file_name)
+value = float(m.group(1))
+print(value)
+object = load_and_normalize_image(file_path)
+period = int(value * 1e-6 / 0.2e-6)
+
 # --- Set pixel size of the image and sensor ---
-sensor_pixel_sizes = [0.2e-6, 1.2e-6]  # 0.2µm for image, 1.6µm for sensor
+sensor_pixel_sizes = [0.2e-6, 0.8e-6]  # 0.2µm for image, 1.6µm for sensor
 numPixels_image = 1024  # The dimension of the image
 FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
-z2 = 0.00004  # Sample to sensor distance
+z2 = 0.001  # Sample to sensor distance
 wavelength = 532e-9 # Wavelength
 
 # --- Define the spatial grid ---
@@ -146,14 +164,13 @@ W, H = np.meshgrid(x, y)
 # object_filtered = bandlimit_filter(object, sensor_pixel_sizes[1])
 # am_object_filtered = np.abs(object_filtered)
 # am_object = np.abs(object)
-
 # ---Define the sample field ---
 am = np.exp(-2 * object)
 ph0 = 3
 ph = ph0 * object
 object_field = am * np.exp(1j * ph)
 am_object_field = np.abs(object_field)
-plot_image(am_object_field,"sample field")
+# plot_image(am_object_field,"sample field")
 
 # --- The Filtering issue due to NA limitation ---
 # This cut-off frequency is input into the transfer function
@@ -165,7 +182,7 @@ f_cut = NA / wavelength # The lateral frequency on sensor plane
 hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, numPixels_image, wavelength, f_cut)
 in_hologram = np.abs(hologram_field) ** 2
 am_hologram = np.sqrt(in_hologram)
-plot_image(in_hologram,"hologram field")
+# plot_image(in_hologram,"hologram field")
 
 # --- Calculate the dimension of sampled hologram ---
 undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
@@ -188,7 +205,7 @@ hologram_field_filtered = fftshift(ifft2(ifftshift(hologram_fft_window)))
 center = np.arange(undersample_factor//2, numPixels_image, undersample_factor)
 Sampled_hologram_field = hologram_field_filtered[center[:,None], center]
 Sampled_hologram = np.abs(Sampled_hologram_field) ** 2
-plot_image(Sampled_hologram,"hologram sampled")
+# plot_image(Sampled_hologram,"hologram sampled")
 
 # --- Adding noise ---
 # scaling_factor = 8000 # Assume full well capacity is 8000e-
@@ -209,7 +226,9 @@ plot_image(Sampled_hologram,"hologram sampled")
 # --- Reconstruction based on IPR algo ---
 rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
 am_rec_field = np.abs(rec_field)
-plot_image(am_rec_field, "rec field")
+plot_image(am_rec_field, "rec field",'/Users/wangmusi/Desktop/Research/Reconstruction relationship/Pixel', sensor_pixel_sizes[1], value)
+
+
 
 # --- Contrast ---
 y_index = 65
