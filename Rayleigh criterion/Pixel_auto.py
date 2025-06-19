@@ -150,21 +150,58 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 
 #----------------------------------------Divided Line-------------------------------------------
 
-# --- Read image ---
-file_path = '/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/5_test.png'
-file_name = os.path.basename(file_path)
-m = re.search(r'(\d+(?:\.\d+)?)_test', file_name)
-value = float(m.group(1))
-print(value)
-object = load_and_normalize_image(file_path)
-period = int(value * 1e-6 / 0.2e-6)
+for i in range (57):
+    # --- Set pixel size of the image and sensor ---
+    sensor_pixel_sizes = np.arange(0.2, 3.05,
+                                   0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
+    FOV_initial = 409.6
+    numPixels_sensor = FOV_initial // sensor_pixel_sizes[i]  # The dimension of the image
+    FOV = numPixels_sensor * sensor_pixel_sizes[i] # The real FOV
+    z2 = 0.001  # Sample to sensor distance
+    wavelength = 532e-9  # Wavelength
 
-# --- Set pixel size of the image and sensor ---
-sensor_pixel_sizes = [0.2e-6, 0.4e-6]  # 0.2µm for image, 1.6µm for sensor
-numPixels_image = 1024  # The dimension of the image
-FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
-z2 = 0.001  # Sample to sensor distance
-wavelength = 532e-9 # Wavelength
+    # --- Sample plane ---
+    if sensor_pixel_sizes[i] % 0.2 == 0:
+        image_pixel_size = 0.2
+    if sensor_pixel_sizes[i] % 0.05 == 0:
+        image_pixel_size = 0.05
+    else:
+        image_pixel_size = 0.1
+    factor = sensor_pixel_sizes[i] / image_pixel_size
+    number_pixel = FOV / image_pixel_size
+
+    # --- Generate the sample ---
+    img_size = FOV
+    px_size_um = 
+    spacing_um = 17
+
+    # Convert physical spacing to pixel period
+    period_px = int(spacing_um / px_size_um)
+    stripe_width = period_px // 2
+
+    # Create a blank (black) image
+    img = np.zeros((img_size, img_size), dtype=np.uint8)
+
+    # Define the central square region (512x512)
+    region_size = img_size // 2
+    start = (img_size - region_size) // 2
+    end = start + region_size
+
+    # Draw vertical stripes in the top half
+    for x in range(start, end):
+        if ((x - start) // stripe_width) % 2 == 0:
+            img[start:start + region_size // 2, x] = 255
+
+    # Draw horizontal stripes in the bottom half
+    for y in range(start + region_size // 2, end):
+        if ((y - (start + region_size // 2)) // stripe_width) % 2 == 0:
+            img[y, start:end] = 255
+
+    # Save the image
+    output_path = 'Rayleigh criterion/17_test3ten.png'
+    Image.fromarray(img).save(output_path)
+    print(f"Image saved to {output_path}")
+
 
 # --- Define the spatial grid ---
 x = np.arange(numPixels_image) - numPixels_image / 2 - 1

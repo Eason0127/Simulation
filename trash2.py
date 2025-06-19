@@ -2,9 +2,9 @@ import numpy as np
 from PIL import Image
 
 # Image parameters
-img_size = 1024
-px_size_um = 0.2
-spacing_um = 20.0
+img_size = 2000
+px_size_um = 0.3
+spacing_um = 17
 
 # Convert physical spacing to pixel period
 period_px = int(spacing_um / px_size_um)
@@ -29,7 +29,7 @@ for y in range(start + region_size // 2, end):
         img[y, start:end] = 255
 
 # Save the image
-output_path = 'Rayleigh criterion/20_test.png'
+output_path = 'Rayleigh criterion/17_test3ten.png'
 Image.fromarray(img).save(output_path)
 print(f"Image saved to {output_path}")
 
