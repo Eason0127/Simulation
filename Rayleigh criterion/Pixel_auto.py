@@ -6,6 +6,7 @@ from skimage.metrics import structural_similarity as ssim
 from scipy.signal import find_peaks
 import os
 import re
+import math
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
@@ -150,186 +151,144 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 
 #----------------------------------------Divided Line-------------------------------------------
 
+# --- Set pitch size of the image and sensor ---
+sensor_pixel_sizes = np.arange(0.2, 3.05, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
+spacing_um = np.arange(2, 20, 0.5) * 1e-6
+resolutions = []
 for i in range (57):
-    # --- Set pixel size of the image and sensor ---
-    sensor_pixel_sizes = np.arange(0.2, 3.05,
-                                   0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
-    FOV_initial = 409.6
-    numPixels_sensor = FOV_initial // sensor_pixel_sizes[i]  # The dimension of the image
+    FOV_initial = 409.6e-6
+    numPixels_sensor = int(FOV_initial // sensor_pixel_sizes[i])  # The dimension of the image
     FOV = numPixels_sensor * sensor_pixel_sizes[i] # The real FOV
     z2 = 0.001  # Sample to sensor distance
     wavelength = 532e-9  # Wavelength
 
-    # --- Sample plane ---
-    if sensor_pixel_sizes[i] % 0.2 == 0:
-        image_pixel_size = 0.2
-    if sensor_pixel_sizes[i] % 0.05 == 0:
-        image_pixel_size = 0.05
+    # --- Determine the sample pitch size according to the sensor pitch size ---
+    if math.isclose(sensor_pixel_sizes[i] % (0.2e-6), 0, abs_tol=1e-12):
+        image_pixel_size = 0.2e-6
+    elif math.isclose(sensor_pixel_sizes[i] % (0.05e-6), 0, abs_tol=1e-12):
+        image_pixel_size = 0.05e-6
     else:
-        image_pixel_size = 0.1
+        image_pixel_size = 0.1e-6
+
     factor = sensor_pixel_sizes[i] / image_pixel_size
-    number_pixel = FOV / image_pixel_size
+    numPixel_sample = int(FOV / image_pixel_size)
 
     # --- Generate the sample ---
-    img_size = FOV
-    px_size_um = 
-    spacing_um = 17
+    img_size = numPixel_sample
+    px_size_um = image_pixel_size
 
-    # Convert physical spacing to pixel period
-    period_px = int(spacing_um / px_size_um)
-    stripe_width = period_px // 2
+    # --- Test the samples ---
+    for n in spacing_um:
+        period_px = int(n / px_size_um)
+        stripe_width = period_px // 2
+        # Create a blank (black) image
+        img = np.zeros((img_size, img_size), dtype=np.uint8)
+        # Define the central square region (512x512)
+        region_size = img_size // 2
+        start = (img_size - region_size) // 2
+        end = start + region_size
+        # Draw vertical stripes in the top half
+        for x in range(start, end):
+            if ((x - start) // stripe_width) % 2 == 0:
+                img[start:start + region_size // 2, x] = 255
+        # Draw horizontal stripes in the bottom half
+        for y in range(start + region_size // 2, end):
+            if ((y - (start + region_size // 2)) // stripe_width) % 2 == 0:
+                img[y, start:end] = 255
+        object = img.astype(float) / 255.0
 
-    # Create a blank (black) image
-    img = np.zeros((img_size, img_size), dtype=np.uint8)
+        # --- Define the spatial grid of sample plane ---
+        x = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
+        y = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
+        W, H = np.meshgrid(x, y)
 
-    # Define the central square region (512x512)
-    region_size = img_size // 2
-    start = (img_size - region_size) // 2
-    end = start + region_size
+        # ---Define the sample field ---
+        am = np.exp(-2 * object)
+        ph0 = 3
+        ph = ph0 * object
+        object_field = am * np.exp(1j * ph)
+        am_object_field = np.abs(object_field)
+        plot_image2(am_object_field,"sample field")
 
-    # Draw vertical stripes in the top half
-    for x in range(start, end):
-        if ((x - start) // stripe_width) % 2 == 0:
-            img[start:start + region_size // 2, x] = 255
+        # --- The Filtering issue due to NA limitation ---
+        # This cut-off frequency is input into the transfer function
+        NA = (FOV / 2) / np.sqrt((FOV / 2) ** 2 + z2 ** 2) # Numerical Aperture
+        f_cut = NA / wavelength # The lateral frequency on sensor plane
 
-    # Draw horizontal stripes in the bottom half
-    for y in range(start + region_size // 2, end):
-        if ((y - (start + region_size // 2)) // stripe_width) % 2 == 0:
-            img[y, start:end] = 255
+        # --- Acquire the hologram ---
+        hologram_field = angular_spectrum_method(object_field, image_pixel_size, z2, W, H, numPixel_sample, wavelength, f_cut)
+        in_hologram = np.abs(hologram_field) ** 2
+        am_hologram = np.sqrt(in_hologram)
+        # plot_image(in_hologram,"hologram field")
 
-    # Save the image
-    output_path = 'Rayleigh criterion/17_test3ten.png'
-    Image.fromarray(img).save(output_path)
-    print(f"Image saved to {output_path}")
+        # --- Calculate the dimension of sampled hologram ---
+        undersample_factor = int(sensor_pixel_sizes[i] / image_pixel_size)
+        sampled_hologram = am_hologram[::undersample_factor, ::undersample_factor]
+        am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
+        Sampled_hologram = sampled_hologram ** 2
 
+        # --- Create the sensor grid ---
+        x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
+        y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
+        W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 
-# --- Define the spatial grid ---
-x = np.arange(numPixels_image) - numPixels_image / 2 - 1
-y = np.arange(numPixels_image) - numPixels_image / 2 - 1
-W, H = np.meshgrid(x, y)
+        # --- Reconstruction based on IPR algo ---
+        rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
+        am_rec_field = np.abs(rec_field)
+        plot_image(am_rec_field, "rec field", 'C:\Users\GOG\Desktop\Research\Pixel_test\0.001', sensor_pixel_sizes[i], n)
 
-# --- Filter the image before forward propagation ---
-# object_filtered = bandlimit_filter(object, sensor_pixel_sizes[1])
-# am_object_filtered = np.abs(object_filtered)
-# am_object = np.abs(object)
-# ---Define the sample field ---
-am = np.exp(-2 * object)
-ph0 = 3
-ph = ph0 * object
-object_field = am * np.exp(1j * ph)
-am_object_field = np.abs(object_field)
-plot_image2(am_object_field,"sample field")
+        # --- Contrast ---
+        region = am_rec_field[start:start + region_size, start:start + region_size]
+        # 1) Read the value on the line
+        y_index = 65
+        line_vals = region[y_index, :]
+        PSF = line_vals ** 2
+        # Plot PSF
+        x = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
+        plt.plot(x, PSF, linewidth=2)
+        # 2) Find all the peaks and troughs
+        peaks, _ = find_peaks(PSF)
+        troughs, _ = find_peaks(-PSF)
+        # 3) Calculate the contrast
+        contrasts = []
+        for k in range(len(peaks) - 1):
+            p1, p2 = peaks[k], peaks[k + 1]
+            I1, I2 = PSF[p1], PSF[p2]
+            I_max_small = min(I1, I2)
+            # 中间的谷值索引
+            between = troughs[(troughs > p1) & (troughs < p2)]
+            if between.size == 0:
+                continue
+            # 如果中间有多个谷，取最低的那个
+            I_min = PSF[between].min()
+            C = (I_max_small - I_min) / (I_max_small + I_min)
+            contrasts.append(C)
+            if contrasts and all(c > 0.25 for c in contrasts):
+                final_spacing = n  # 记录当前的空间周期（单位：m）
+                print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "
+                      f"resolvable at spacing = {final_spacing * 1e6:.2f}μm")
+                # 跳出 spacing 循环，进入下一个 sensor_pixel_sizes[i]
+                resolutions.append(final_spacing)
+                break
+    else:
+        # 如果整个 spacing_um 循环走完都没有满足可分辨条件
+        print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: " "not resolvable in tested range")
 
-# --- The Filtering issue due to NA limitation ---
-# This cut-off frequency is input into the transfer function
-NA = (FOV / 2) / np.sqrt((FOV / 2) ** 2 + z2 ** 2) # Numerical Aperture
-f_cut = NA / wavelength # The lateral frequency on sensor plane
+# 转成 μm 单位方便阅读
+sensor_pitches_um = sensor_pixel_sizes * 1e6
+resolutions_um   = np.array(resolutions) * 1e6
 
-
-# --- Acquire the hologram ---
-hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, numPixels_image, wavelength, f_cut)
-in_hologram = np.abs(hologram_field) ** 2
-am_hologram = np.sqrt(in_hologram)
-# plot_image(in_hologram,"hologram field")
-
-# --- Calculate the dimension of sampled hologram ---
-undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
-sampled_hologram_size = am_hologram[::undersample_factor, ::undersample_factor]
-am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
-
-# --- Create the sensor grid ---
-numPixels_sensor = sampled_hologram_size.shape[0]
-x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
-y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
-W_sen, H_sen = np.meshgrid(x_sen, y_sen)
-
-# --- Pixel aperture effect ---
-FX = W / (numPixels_image * sensor_pixel_sizes[0])
-FY = H / (numPixels_image * sensor_pixel_sizes[0])
-Pixel_TF = np.sinc(FX * sensor_pixel_sizes[1]) * np.sinc(FY * sensor_pixel_sizes[1])
-hologram_fft = fftshift(fft2(ifftshift(hologram_field)))
-hologram_fft_window = hologram_fft * Pixel_TF
-hologram_field_filtered = fftshift(ifft2(ifftshift(hologram_fft_window)))
-center = np.arange(undersample_factor//2, numPixels_image, undersample_factor)
-Sampled_hologram_field = hologram_field_filtered[center[:,None], center]
-Sampled_hologram = np.abs(Sampled_hologram_field) ** 2
-
-# --- Adding noise ---
-# scaling_factor = 8000 # Assume full well capacity is 8000e-
-# ideal_intensity = (am_undersampled_hologram ** 2) * scaling_factor # Transform intensity to the scale of photons or electrons
-# noise_electrons = 0 # Choose the number of noise electrons
-# noise_standard = noise_electrons / scaling_factor # Transform noise form scale of electrons to scale of intensity
-# white_Gaussian_noise = np.random.normal(0, noise_standard, ideal_intensity.shape) # Simulate the noise
-# am_noise = np.abs(white_Gaussian_noise)
-# # plot_image(am_noise)
-# am_hologram_with_noise = am_undersampled_hologram + white_Gaussian_noise
-
-# --- Calculate SNR ---
-# noise_power = np.mean(white_Gaussian_noise ** 2)
-# signal_power = np.mean(am_undersampled_hologram ** 2)
-# SNR = 10 * np.log10(signal_power / noise_power)
-
-
-# --- Reconstruction based on IPR algo ---
-rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
-am_rec_field = np.abs(rec_field)
-plot_image(am_rec_field, "rec field",'/Users/wangmusi/Desktop/Research/Reconstruction relationship/Pixel', sensor_pixel_sizes[1], value)
-
-
-
-# --- Contrast ---
-y_index = 65
-value = am_rec_field[y_index, :]
-PSF = np.abs(value) ** 2
-plt.figure(figsize=(8,4))
-plt.plot(x_sen, PSF, linewidth=2)
-plt.xlabel('x (m)')
-plt.ylabel('Intensity')
-plt.title('PSF Profile')
-plt.grid(True, linestyle='--', alpha=0.7)
+plt.figure(figsize=(6,4))
+plt.plot(sensor_pitches_um, resolutions_um, marker='o', linestyle='-')
+plt.xlabel('Sensor pitch (μm)')
+plt.ylabel('Resolved stripe period (μm)')
+plt.title('Resolution vs. Sensor Pitch Size')
+plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
+
+# 保存到当前目录
+out_path = 'resolution_vs_sensor_pitch.png'
+plt.savefig(out_path, dpi=300)
+print(f"✅ Plot saved to {C:\Users\GOG\Desktop\Research\Pixel_test}")
+
 plt.show()
-peaks, _ = find_peaks(PSF, height = None, distance = period * 0.7)
-troughs, _ = find_peaks(-PSF, height = None, distance = period * 0.7)
-I_max = PSF[peaks].mean()
-I_min = PSF[troughs].mean()
-print(f"I_max = {I_max}, I_min = {I_min}")
-C = (I_max - I_min) / (I_max + I_min)
-print(f"Contrast = {C}")
-if C >= 0.1:
-    print("It's resolved!")
-else:
-    print("It's not resolved!")
-
-# --- PSF ---
-# y_index = 86
-# PSF_pre = am_rec_field[y_index, :]
-# PSF = np.abs(PSF_pre) ** 2
-# x_axis = x_sen
-# # plot
-# plt.figure(figsize=(8,4))
-# plt.plot(x_axis, PSF, linewidth=2)
-# plt.xlabel('x')
-# plt.ylabel('Intensity')
-# plt.title(f'PSF')
-# plt.grid(True, linestyle='--', alpha=0.7)
-# plt.tight_layout()
-# plt.show()
-
-# # --- MTF ---
-# Np = PSF.size
-# print(Np)
-# OTF1d = fftshift(fft(ifftshift(PSF)))         # 1D OTF
-# MTF1d = np.abs(OTF1d)
-# MTF1d /= MTF1d.max()
-# F_x = x_axis / (Np * sensor_pixel_sizes[1])
-# plt.figure(figsize=(6,4))
-# plt.plot(F_x, MTF1d, linewidth=2)
-# plt.xlabel('Spatial frequency (1/m)')
-# plt.ylabel('MTF')
-# plt.title('1D MTF from PSF profile')
-# plt.grid(True, linestyle='--', alpha=0.7)
-# plt.tight_layout()
-# plt.show()
-
-
