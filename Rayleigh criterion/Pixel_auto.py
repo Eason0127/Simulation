@@ -32,7 +32,6 @@ def plot_image(amplitude,title, save_dir, pixel, picture):
     fig.colorbar(im, ax=ax, label="Amplitude")
     ax.set_title(title)
     ax.axis('off')
-    plt.show()
     # —— 保存 ——
     if save_dir is not None and pixel is not None and picture is not None:
         os.makedirs(save_dir, exist_ok=True)
@@ -153,7 +152,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 
 # --- Set pitch size of the image and sensor ---
 sensor_pixel_sizes = np.arange(0.2, 3.05, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
-spacing_um = np.arange(2, 20, 0.5) * 1e-6
+spacing_um = np.arange(5, 20, 0.5) * 1e-6
 resolutions = []
 for i in range (57):
     FOV_initial = 409.6e-6
@@ -169,6 +168,7 @@ for i in range (57):
         image_pixel_size = 0.05e-6
     else:
         image_pixel_size = 0.1e-6
+    print(sensor_pixel_sizes[i], image_pixel_size)
 
     factor = sensor_pixel_sizes[i] / image_pixel_size
     numPixel_sample = int(FOV / image_pixel_size)
@@ -208,7 +208,7 @@ for i in range (57):
         ph = ph0 * object
         object_field = am * np.exp(1j * ph)
         am_object_field = np.abs(object_field)
-        plot_image2(am_object_field,"sample field")
+        # plot_image2(am_object_field,"sample field")
 
         # --- The Filtering issue due to NA limitation ---
         # This cut-off frequency is input into the transfer function
@@ -235,17 +235,22 @@ for i in range (57):
         # --- Reconstruction based on IPR algo ---
         rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
         am_rec_field = np.abs(rec_field)
-        plot_image(am_rec_field, "rec field", 'C:\Users\GOG\Desktop\Research\Pixel_test\0.001', sensor_pixel_sizes[i], n)
+        plot_image(am_rec_field, "rec field", r'C:\Users\GOG\Desktop\Research\Pixel_test\0.001', sensor_pixel_sizes[i], n)
 
         # --- Contrast ---
-        region = am_rec_field[start:start + region_size, start:start + region_size]
+        img_size_sensor = numPixels_sensor
+        print(img_size_sensor)
+        region_size_sensor = img_size_sensor // 2
+        start_sensor = (img_size_sensor - region_size_sensor) // 2
+        end_sensor = start_sensor + region_size_sensor
+        region = am_rec_field[start_sensor:end_sensor, start_sensor:end_sensor]
         # 1) Read the value on the line
-        y_index = 65
+        y_index = 20
         line_vals = region[y_index, :]
         PSF = line_vals ** 2
         # Plot PSF
-        x = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
-        plt.plot(x, PSF, linewidth=2)
+        # x = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
+        # plt.plot(x, PSF, linewidth=2)
         # 2) Find all the peaks and troughs
         peaks, _ = find_peaks(PSF)
         troughs, _ = find_peaks(-PSF)
@@ -263,20 +268,22 @@ for i in range (57):
             I_min = PSF[between].min()
             C = (I_max_small - I_min) / (I_max_small + I_min)
             contrasts.append(C)
-            if contrasts and all(c > 0.25 for c in contrasts):
-                final_spacing = n  # 记录当前的空间周期（单位：m）
-                print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "
-                      f"resolvable at spacing = {final_spacing * 1e6:.2f}μm")
-                # 跳出 spacing 循环，进入下一个 sensor_pixel_sizes[i]
-                resolutions.append(final_spacing)
-                break
-    else:
-        # 如果整个 spacing_um 循环走完都没有满足可分辨条件
-        print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: " "not resolvable in tested range")
+        count = sum(1 for c in contrasts if c > 0.35)
+        total = len(contrasts)
+        # 如果有 contrasts，且满足 80% 以上的对比度 > 0.35
+        if total > 0 and count >= 0.8 * total:
+            final_spacing = n
+            resolutions.append(final_spacing)
+            print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "
+                  f"80% contrasts >0.35，resolvable at {final_spacing * 1e6:.2f}μm")
+            break
+        else:
+            print("It's not resolvable, next run begins!")
+
 
 # 转成 μm 单位方便阅读
 sensor_pitches_um = sensor_pixel_sizes * 1e6
-resolutions_um   = np.array(resolutions) * 1e6
+resolutions_um = np.array(resolutions) * 1e6
 
 plt.figure(figsize=(6,4))
 plt.plot(sensor_pitches_um, resolutions_um, marker='o', linestyle='-')
@@ -289,6 +296,9 @@ plt.tight_layout()
 # 保存到当前目录
 out_path = 'resolution_vs_sensor_pitch.png'
 plt.savefig(out_path, dpi=300)
-print(f"✅ Plot saved to {C:\Users\GOG\Desktop\Research\Pixel_test}")
+out_path = r'C:\Users\GOG\Desktop\Research\Pixel_test\resolution_vs_sensor_pitch.png'
+plt.savefig(out_path, dpi=300)
+print(f"✅ Plot saved to {out_path}")
+
 
 plt.show()
