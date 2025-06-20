@@ -222,18 +222,19 @@ for i in range (57):
         # plot_image(in_hologram,"hologram field")
 
         # --- Calculate the dimension of sampled hologram ---
-        undersample_factor = int(sensor_pixel_sizes[i] / image_pixel_size)
+        undersample_factor = int(sensor_pixel_sizes[i] / image_pixel_size + 0.5)
         sampled_hologram = am_hologram[::undersample_factor, ::undersample_factor]
         am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
-        Sampled_hologram = sampled_hologram ** 2
+        Sampled_hologram = sampled_hologram
 
         # --- Create the sensor grid ---
-        x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
-        y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
+        numPixels_sensor2 = sampled_hologram.shape[0]
+        x_sen = np.arange(numPixels_sensor2) - numPixels_sensor2 / 2 - 1
+        y_sen = np.arange(numPixels_sensor2) - numPixels_sensor2 / 2 - 1
         W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 
         # --- Reconstruction based on IPR algo ---
-        rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
+        rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor2, am_object_field_down, wavelength, f_cut)
         am_rec_field = np.abs(rec_field)
         plot_image(am_rec_field, "rec field", r'C:\Users\GOG\Desktop\Research\Pixel_test\0.001', sensor_pixel_sizes[i], n)
 
