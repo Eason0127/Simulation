@@ -151,7 +151,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Set pitch size of the image and sensor ---
-sensor_pixel_sizes = np.arange(0.2, 3.05, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
+sensor_pixel_sizes = np.arange(2.65, 3.05, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
 spacing_um = np.arange(5, 20, 0.5) * 1e-6
 resolutions = []
 for i in range (57):
@@ -162,15 +162,24 @@ for i in range (57):
     wavelength = 532e-9  # Wavelength
 
     # --- Determine the sample pitch size according to the sensor pitch size ---
-    if math.isclose(sensor_pixel_sizes[i] % (0.2e-6), 0, abs_tol=1e-12):
-        image_pixel_size = 0.2e-6
-    elif math.isclose(sensor_pixel_sizes[i] % (0.05e-6), 0, abs_tol=1e-12):
-        image_pixel_size = 0.05e-6
+    # if math.isclose(sensor_pixel_sizes[i] % (0.2e-6), 0, abs_tol=1e-12):
+    #     image_pixel_size = 0.2e-6
+    # elif math.isclose(sensor_pixel_sizes[i] % (0.05e-6), 0, abs_tol=1e-12):
+    #     image_pixel_size = 0.05e-6
+    # else:
+    #     image_pixel_size = 0.1e-6
+    candidates = [0.2e-6, 0.1e-6, 0.05e-6]
+    for p in candidates:
+        q = sensor_pixel_sizes[i] / p
+        if abs(q - round(q)) < 1e-6:
+            image_pixel_size = p
+            factor = int(round(q))
+            break
     else:
-        image_pixel_size = 0.1e-6
+        raise ValueError(f"No matching image_pixel_size for sensor pixel {sensor_pixel_sizes[i]}")
     print(sensor_pixel_sizes[i], image_pixel_size)
 
-    factor = sensor_pixel_sizes[i] / image_pixel_size
+    factor = int(sensor_pixel_sizes[i] / image_pixel_size + 0.5)
     numPixel_sample = int(FOV / image_pixel_size)
 
     # --- Generate the sample ---
@@ -196,6 +205,7 @@ for i in range (57):
             if ((y - (start + region_size // 2)) // stripe_width) % 2 == 0:
                 img[y, start:end] = 255
         object = img.astype(float) / 255.0
+        object_shape = object.shape[0]
 
         # --- Define the spatial grid of sample plane ---
         x = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
@@ -222,19 +232,24 @@ for i in range (57):
         # plot_image(in_hologram,"hologram field")
 
         # --- Calculate the dimension of sampled hologram ---
-        undersample_factor = int(sensor_pixel_sizes[i] / image_pixel_size + 0.5)
-        sampled_hologram = am_hologram[::undersample_factor, ::undersample_factor]
-        am_object_field_down = am_object_field[::undersample_factor, ::undersample_factor]
+        # undersample_factor = int(sensor_pixel_sizes[i] / image_pixel_size + 0.5)
+        sampled_hologram = am_hologram[::factor, ::factor]
+        am_object_field_down = am_object_field[::factor, ::factor]
         Sampled_hologram = sampled_hologram
 
         # --- Create the sensor grid ---
         numPixels_sensor2 = sampled_hologram.shape[0]
-        x_sen = np.arange(numPixels_sensor2) - numPixels_sensor2 / 2 - 1
-        y_sen = np.arange(numPixels_sensor2) - numPixels_sensor2 / 2 - 1
+        x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
+        y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
         W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 
+        # --- Code check ---
+        print(f"Factor = {factor}")
+        print(f"sample shape = {object_shape}")
+        print(f"hologram shape = {numPixels_sensor2}")
+
         # --- Reconstruction based on IPR algo ---
-        rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor2, am_object_field_down, wavelength, f_cut)
+        rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
         am_rec_field = np.abs(rec_field)
         plot_image(am_rec_field, "rec field", r'C:\Users\GOG\Desktop\Research\Pixel_test\0.001', sensor_pixel_sizes[i], n)
 
@@ -269,17 +284,18 @@ for i in range (57):
             I_min = PSF[between].min()
             C = (I_max_small - I_min) / (I_max_small + I_min)
             contrasts.append(C)
-        count = sum(1 for c in contrasts if c > 0.35)
+        count = sum(1 for c in contrasts if c > 0.7)
         total = len(contrasts)
         # 如果有 contrasts，且满足 80% 以上的对比度 > 0.35
-        if total > 0 and count >= 0.8 * total:
+        min_contrast = min(contrasts) # 最小的对比度的值
+        if total > 0 and count >= 0.65 * total:
             final_spacing = n
             resolutions.append(final_spacing)
             print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "
                   f"80% contrasts >0.35，resolvable at {final_spacing * 1e6:.2f}μm")
             break
         else:
-            print("It's not resolvable, next run begins!")
+            print(f"The minimum contrast is {min_contrast}. It's not resolvable, next run begins!")
 
 
 # 转成 μm 单位方便阅读
@@ -287,19 +303,18 @@ sensor_pitches_um = sensor_pixel_sizes * 1e6
 resolutions_um = np.array(resolutions) * 1e6
 
 plt.figure(figsize=(6,4))
-plt.plot(sensor_pitches_um, resolutions_um, marker='o', linestyle='-')
+plt.plot(sensor_pitches_um, resolutions_um, linestyle='-')  # 不再有 marker
 plt.xlabel('Sensor pitch (μm)')
 plt.ylabel('Resolved stripe period (μm)')
 plt.title('Resolution vs. Sensor Pitch Size')
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
 
-# 保存到当前目录
+# 保存
 out_path = 'resolution_vs_sensor_pitch.png'
 plt.savefig(out_path, dpi=300)
 out_path = r'C:\Users\GOG\Desktop\Research\Pixel_test\resolution_vs_sensor_pitch.png'
 plt.savefig(out_path, dpi=300)
 print(f"✅ Plot saved to {out_path}")
-
 
 plt.show()
