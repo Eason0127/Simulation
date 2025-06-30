@@ -151,14 +151,14 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Set pitch size of the image and sensor ---
-sensor_pixel_sizes = np.arange(2.65, 3.05, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
-spacing_um = np.arange(5, 20, 0.5) * 1e-6
+sensor_pixel_sizes = np.arange(1.6, 3.05, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
+spacing_um = np.arange(7, 20, 0.5) * 1e-6
 resolutions = []
 for i in range (57):
     FOV_initial = 409.6e-6
     numPixels_sensor = int(FOV_initial // sensor_pixel_sizes[i])  # The dimension of the image
     FOV = numPixels_sensor * sensor_pixel_sizes[i] # The real FOV
-    z2 = 0.001  # Sample to sensor distance
+    z2 = 0.0005  # Sample to sensor distance
     wavelength = 532e-9  # Wavelength
 
     # --- Determine the sample pitch size according to the sensor pitch size ---
@@ -251,11 +251,10 @@ for i in range (57):
         # --- Reconstruction based on IPR algo ---
         rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
         am_rec_field = np.abs(rec_field)
-        plot_image(am_rec_field, "rec field", r'C:\Users\GOG\Desktop\Research\Pixel_test\0.001', sensor_pixel_sizes[i], n)
+        plot_image(am_rec_field, "rec field", r'/Users/wangmusi/Desktop/Research/Reconstruction relationship/pixel2', sensor_pixel_sizes[i], n)
 
         # --- Contrast ---
         img_size_sensor = numPixels_sensor
-        print(img_size_sensor)
         region_size_sensor = img_size_sensor // 2
         start_sensor = (img_size_sensor - region_size_sensor) // 2
         end_sensor = start_sensor + region_size_sensor
@@ -266,36 +265,87 @@ for i in range (57):
         PSF = line_vals ** 2
         # Plot PSF
         # x = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
+        # plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
         # plt.plot(x, PSF, linewidth=2)
-        # 2) Find all the peaks and troughs
-        peaks, _ = find_peaks(PSF)
-        troughs, _ = find_peaks(-PSF)
-        # 3) Calculate the contrast
-        contrasts = []
-        for k in range(len(peaks) - 1):
-            p1, p2 = peaks[k], peaks[k + 1]
-            I1, I2 = PSF[p1], PSF[p2]
-            I_max_small = min(I1, I2)
-            # 中间的谷值索引
-            between = troughs[(troughs > p1) & (troughs < p2)]
-            if between.size == 0:
-                continue
-            # 如果中间有多个谷，取最低的那个
-            I_min = PSF[between].min()
-            C = (I_max_small - I_min) / (I_max_small + I_min)
-            contrasts.append(C)
-        count = sum(1 for c in contrasts if c > 0.7)
-        total = len(contrasts)
-        # 如果有 contrasts，且满足 80% 以上的对比度 > 0.35
-        min_contrast = min(contrasts) # 最小的对比度的值
-        if total > 0 and count >= 0.65 * total:
-            final_spacing = n
-            resolutions.append(final_spacing)
-            print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "
-                  f"80% contrasts >0.35，resolvable at {final_spacing * 1e6:.2f}μm")
-            break
-        else:
-            print(f"The minimum contrast is {min_contrast}. It's not resolvable, next run begins!")
+        # plt.xlabel('Position (μm)')
+        # plt.ylabel('PSF Intensity')
+        # plt.title(f'PSF Profile, sensor pitch = {sensor_pixel_sizes[i] * 1e6:.2f}μm, spacing = {n * 1e6:.2f}μm')
+        # plt.grid(True)
+        # plt.tight_layout()
+        # plt.show()
+
+        # 2) 找出每个亮条纹的最大值与暗条纹的最小值
+
+        try:
+            # 2) 找出每个亮条纹的最大值与暗条纹的最小值
+            period_sensor = period_px // factor
+            stripe_width_sensor = stripe_width // factor
+            size = PSF.size
+
+            # 跳过不合理情况
+            if stripe_width_sensor < 1 or period_sensor <= stripe_width_sensor or size < period_sensor:
+                raise ValueError("窗口太小，跳过")
+
+            n_periods = size // period_sensor
+            PSF_cut = PSF[:n_periods * period_sensor]
+            print(f"图像周期：{period_px}，传感器周期：{period_sensor}，图像条纹{stripe_width}，传感器条纹{stripe_width_sensor}")
+            I_max = []
+            I_min = []
+            for k in range(n_periods):
+                peak_block = PSF_cut[k * period_sensor: k * period_sensor + stripe_width_sensor]
+                trough_block = PSF_cut[k * period_sensor + stripe_width_sensor: (k + 1) * period_sensor]
+                if peak_block.size == 0 or trough_block.size == 0:
+                    raise ValueError("切片为空，跳过")
+                I_min.append(peak_block.min())
+                I_max.append(trough_block.max())
+            print(I_max)
+            contrasts = []
+            for k in range(len(I_max) - 1):
+                I_peak = min(I_max[k], I_max[k + 1])
+                I_trough = I_min[k]
+                contrasts.append((I_peak - I_trough) / (I_peak + I_trough))
+
+            # … 剩下的判准逻辑 …
+            count = sum(1 for c in contrasts if c > 0.45)
+            total = len(contrasts)
+            if total > 0 and count >= 0.7 * total:
+                # 可解
+                resolutions.append(n)
+                print(f"🌟[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "f"80% contrasts >0.35，resolvable at {n * 1e6:.2f}μm")
+                break
+            else:
+                print(f"The minimum contrast is {min(contrasts)}. It's not resolvable, next run begins!")
+        except Exception as e:
+            # 这里捕获上面抛出的跳过或其它错误，直接 continue
+            print(f"Contrast 计算时出错 ({e})，跳过 n={n * 1e6:.2f}μm")
+            continue
+        # I_max = [
+        #     PSF_cut[k * period_sensor: k * period_sensor + stripe_width_sensor].max()
+        #     for k in range(n_periods)
+        # ]
+        # I_min = [
+        #     PSF_cut[k * period_sensor + stripe_width_sensor: (k + 1) * period_sensor].min()
+        #     for k in range(n_periods)
+        # ]
+        # contrasts = []
+        # for k in range(n_periods - 1):
+        #     I_peak = min(I_max[k], I_max[k + 1])
+        #     I_trough = I_min[k]
+        #     C = (I_peak - I_trough) / (I_peak + I_trough)
+        #     print(C)
+        #     contrasts.append(C)
+        # count = sum(1 for c in contrasts if c > 0.7)
+        # total = len(contrasts)
+        # # 如果有 contrasts，且满足 80% 以上的对比度 > 0.35
+        # min_contrast = min(contrasts) # 最小的对比度的值
+        # if total > 0 and count >= 0.65 * total:
+        #     final_spacing = n
+        #     resolutions.append(final_spacing)
+        #     print(f"[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "
+        #           f"80% contrasts >0.35，resolvable at {final_spacing * 1e6:.2f}μm")
+        #     break
+        # else:
+        #     print(f"The minimum contrast is {min_contrast}. It's not resolvable, next run begins!")
 
 
 # 转成 μm 单位方便阅读
@@ -313,7 +363,7 @@ plt.tight_layout()
 # 保存
 out_path = 'resolution_vs_sensor_pitch.png'
 plt.savefig(out_path, dpi=300)
-out_path = r'C:\Users\GOG\Desktop\Research\Pixel_test\resolution_vs_sensor_pitch.png'
+out_path = r'/Users/wangmusi/Desktop/Research/Reconstruction relationship/resolution_vs_sensor_pitch.png'
 plt.savefig(out_path, dpi=300)
 print(f"✅ Plot saved to {out_path}")
 
