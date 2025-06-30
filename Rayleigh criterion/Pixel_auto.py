@@ -154,6 +154,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 sensor_pixel_sizes = np.arange(1.6, 3.05, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
 spacing_um = np.arange(7, 20, 0.5) * 1e-6
 resolutions = []
+
 for i in range (57):
     FOV_initial = 409.6e-6
     numPixels_sensor = int(FOV_initial // sensor_pixel_sizes[i])  # The dimension of the image
