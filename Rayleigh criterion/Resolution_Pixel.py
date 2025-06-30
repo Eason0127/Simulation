@@ -265,19 +265,19 @@ else:
     print("It's not resolved!")
 
 # --- PSF ---
-# y_index = 86
-# PSF_pre = am_rec_field[y_index, :]
-# PSF = np.abs(PSF_pre) ** 2
-# x_axis = x_sen
-# # plot
-# plt.figure(figsize=(8,4))
-# plt.plot(x_axis, PSF, linewidth=2)
-# plt.xlabel('x')
-# plt.ylabel('Intensity')
-# plt.title(f'PSF')
-# plt.grid(True, linestyle='--', alpha=0.7)
-# plt.tight_layout()
-# plt.show()
+y_index = 86
+PSF_pre = am_rec_field[y_index, :]
+PSF = np.abs(PSF_pre) ** 2
+x_axis = x_sen
+# plot
+plt.figure(figsize=(8,4))
+plt.plot(x_axis, PSF, linewidth=2)
+plt.xlabel('x')
+plt.ylabel('Intensity')
+plt.title(f'PSF')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.show()
 
 # # --- MTF ---
 # Np = PSF.size
