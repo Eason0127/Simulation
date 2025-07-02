@@ -4,6 +4,7 @@ from numpy.fft import fft2, ifft2, fftshift, ifftshift, fft, fftfreq
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 from scipy.signal import find_peaks
+import csv
 import os
 import re
 import math
@@ -151,7 +152,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 ## --- Set pitch size of the image and sensor ---
-sensor_pixel_sizes = np.arange(1.6, 3, 0.02) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
+sensor_pixel_sizes = np.arange(0.2, 3, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
 spacing_um = np.arange(5, 20, 0.5) * 1e-6
 resolutions = [] # Store the reconstruction result
 for i in range (len(sensor_pixel_sizes)):
@@ -161,7 +162,7 @@ for i in range (len(sensor_pixel_sizes)):
     z2 = 0.0005  # Sample to sensor distance
     wavelength = 532e-9  # Wavelength
     ## Select the image's pixel size
-    candidates = [0.2e-6, 0.1e-6, 0.02e-6]
+    candidates = [0.2e-6, 0.1e-6, 0.05e-6]
     for p in candidates:
         q = sensor_pixel_sizes[i] / p
         if abs(q - round(q)) < 1e-6: 
@@ -170,7 +171,7 @@ for i in range (len(sensor_pixel_sizes)):
             break
     else:
         raise ValueError(f"No matching image_pixel_size for sensor pixel {sensor_pixel_sizes[i]}")
-    print(sensor_pixel_sizes[i], image_pixel_size)
+    # print(sensor_pixel_sizes[i], image_pixel_size)
 
     factor = int(sensor_pixel_sizes[i] / image_pixel_size + 0.5)
     numPixel_sample = int(FOV / image_pixel_size)
@@ -187,6 +188,9 @@ for i in range (len(sensor_pixel_sizes)):
         region_size = img_size // 2
         start = (img_size - region_size) // 2
         end = start + region_size
+        # 不要黑色为0
+        background_level = 102
+        img = np.full((img_size, img_size), background_level, dtype=np.uint8)
         # Draw vertical stripes in the top half
         for x in range(start, end):
             if ((x - start) // stripe_width) % 2 == 0:
@@ -197,7 +201,6 @@ for i in range (len(sensor_pixel_sizes)):
                 img[y, start:end] = 255
         object = img.astype(float) / 255.0
         object_shape = object.shape[0]
-
         # --- Define the spatial grid of sample plane ---
         g = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
         h = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
@@ -231,23 +234,24 @@ for i in range (len(sensor_pixel_sizes)):
         W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 
         ## --- Code check ---
-        print(f"Factor = {factor}")
-        print(f"sample shape = {object_shape}")
-        print(f"hologram shape = {numPixels_sensor2}")
+        # print(f"Factor = {factor}")
+        # print(f"sample shape = {object_shape}")
+        # print(f"hologram shape = {numPixels_sensor2}")
 
         # --- Reconstruction based on IPR algo ---
         rec_field, rms_errors, ssim_errors = IPR(sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
         am_rec_field = np.abs(rec_field)
-        plot_image(am_rec_field, "rec field", r'/Users/wangmusi/Desktop/Research/Reconstruction relationship/pixel2', sensor_pixel_sizes[i], n)
+        # plot_image(am_rec_field, "rec field", r'/Users/wangmusi/Desktop/Research/Reconstruction relationship/pixel4', sensor_pixel_sizes[i], n)
         # --- Contrast ---
         sample_size_sensor = numPixels_sensor # 传感器平面的图像像素数
         region_size_sensor = sample_size_sensor // 2
         start_sensor = (sample_size_sensor - region_size_sensor) // 2
         end_sensor = start_sensor + region_size_sensor
         region = am_rec_field[start_sensor:end_sensor, start_sensor:end_sensor]
+        plot_image(region,"rec field", r"/Users/wangmusi/Desktop/Research/new_rec_test/0.5",sensor_pixel_sizes[i], n)
         # 1) Read the value on the lines
-        y_indices = [5,10,15,20]
-        x_indices = [-10,-5,5,10]
+        y_indices = [5,6,7,8,9,10,11,12,13,14,15,18,20]
+        x_indices = [-10,-9,-8,-6,-5,-3,-2,-1,0,2,3,4,5,7,8,9,10]
         contrasts = []
         m = region_size_sensor // 2
         ## 上半区域的对比度
@@ -256,14 +260,14 @@ for i in range (len(sensor_pixel_sizes)):
             PSF = line_vals ** 2
             ## Plot PSF
             axis = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
-            plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
-            plt.plot(axis, PSF, linewidth=2)
-            plt.xlabel('Position (μm)')
-            plt.ylabel('PSF Intensity')
-            plt.title(f'PSF Profile, sensor pitch = {sensor_pixel_sizes[i] * 1e6:.2f}μm, spacing = {n * 1e6:.2f}μm')
-            plt.grid(True)
-            plt.tight_layout()
-            plt.show()
+            # plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
+            # plt.plot(axis, PSF, linewidth=2)
+            # plt.xlabel('Position (μm)')
+            # plt.ylabel('PSF Intensity')
+            # plt.title(f'PSF Profile, sensor pitch = {sensor_pixel_sizes[i] * 1e6:.2f}μm, spacing = {n * 1e6:.2f}μm')
+            # plt.grid(True)
+            # plt.tight_layout()
+            # plt.show()
             ## 2) Find the maximum of the bright stripe and the minimum of the dark stripe.
             try:
                 period_sensor = grating_period // factor
@@ -284,7 +288,10 @@ for i in range (len(sensor_pixel_sizes)):
                     peak_block = PSF_cut[k * period_sensor + stripe_width_sensor: (k + 1) * period_sensor]
                     I_min.append(trough_block.min())
                     I_max.append(peak_block.max())
-
+                # print("亮条纹平均值")
+                # print(I_max,"\n")
+                # print("暗条纹平均值")
+                # print(I_min)
                 for k in range(len(I_max) - 1):
                     I_peak = min(I_max[k], I_max[k + 1])
                     I_trough = I_min[k]
@@ -301,14 +308,14 @@ for i in range (len(sensor_pixel_sizes)):
             line_vals = region[m: , m + x]
             PSF = line_vals ** 2
             axis = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
-            plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
-            plt.plot(axis, PSF, linewidth=2)
-            plt.xlabel('Position (μm)')
-            plt.ylabel('PSF Intensity')
-            plt.title(f'PSF Profile, sensor pitch = {sensor_pixel_sizes[i] * 1e6:.2f}μm, spacing = {n * 1e6:.2f}μm')
-            plt.grid(True)
-            plt.tight_layout()
-            plt.show()
+            # plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
+            # plt.plot(axis, PSF, linewidth=2)
+            # plt.xlabel('Position (μm)')
+            # plt.ylabel('PSF Intensity')
+            # plt.title(f'PSF Profile, sensor pitch = {sensor_pixel_sizes[i] * 1e6:.2f}μm, spacing = {n * 1e6:.2f}μm')
+            # plt.grid(True)
+            # plt.tight_layout()
+            # plt.show()
             try:
                 period_sensor = grating_period // factor
                 stripe_width_sensor = stripe_width // factor
@@ -325,8 +332,8 @@ for i in range (len(sensor_pixel_sizes)):
                 for k in range(n_periods):
                     trough_block = PSF_cut[k * period_sensor: k * period_sensor + stripe_width_sensor]
                     peak_block = PSF_cut[k * period_sensor + stripe_width_sensor: (k + 1) * period_sensor]
-                    I_min.append(trough_block.min())
-                    I_max.append(peak_block.max())
+                    I_min.append(trough_block.mean())
+                    I_max.append(peak_block.mean())
                 for k in range(len(I_max) - 1):
                     I_peak = min(I_max[k], I_max[k + 1])
                     I_trough = I_min[k]
@@ -341,12 +348,20 @@ for i in range (len(sensor_pixel_sizes)):
         ## 计算总的对比度            
         contrast_mean = np.mean(contrasts)
         ## 判断条件
-        if contrast_mean > 0.25:
-            print(f"🌟[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "f"mean contrast = {contrast_mean} >0.25，resolvable at {n * 1e6:.2f}μm")
+        if contrast_mean > 0.15:
+            print(f"🌟[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "f"mean contrast = {contrast_mean} >0.2，resolvable at {n * 1e6:.2f}μm")
             resolutions.append(n)
             break
         else:
             print(f"🚩[i={i}] Contrast value = {contrast_mean:.2f}, it's not resolvable at {n * 1e6:.2f}μm")             
+
+## 保存分辨率数据
+with open("/Users/wangmusi/Desktop/Research/new_rec_test/0.5/0.5.csv", "w", newline="") as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(["index", "resolution_um"])
+    for i, r in enumerate(resolutions):
+        writer.writerow([i, r*1e6])
+print("Results saved to resolutions.csv")
 
 # 转成 μm 单位方便阅读
 sensor_pitches_um = sensor_pixel_sizes * 1e6
@@ -361,9 +376,9 @@ plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
 
 # 保存
-out_path = 'resolution_vs_sensor_pitch.png'
+out_path = 'resolution_vs_sensor_pitch2.png'
 plt.savefig(out_path, dpi=300)
-out_path = r'/Users/wangmusi/Desktop/Research/Reconstruction relationship/resolution_vs_sensor_pitch.png'
+out_path = r'/Users/wangmusi/Desktop/Research/new_rec_test/0.5/resolution_vs_sensor_pitch.png'
 plt.savefig(out_path, dpi=300)
 print(f"✅ Plot saved to {out_path}")
 
