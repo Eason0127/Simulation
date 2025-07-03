@@ -10,6 +10,9 @@ import re
 import math
 from PIL import Image
 
+from trash2 import image_pixel_size
+
+
 ## --- Read image and normalization ---
 def load_and_normalize_image(filepath):
     image = Image.open(filepath).convert('L')
@@ -169,30 +172,18 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 ## --- Set pitch size of the image and sensor ---
-sensor_pixel_sizes = np.arange(1, 4, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
-spacing_um = np.arange(4, 20, 1) * 1e-6
+z2 = np.arange(1, 20, 1) * 1e-6  # 样本—传感器间距
+spacing_um = np.arange(5, 20, 1) * 1e-6 # 生成的光栅间距设置
 resolutions = [] # Store the reconstruction result
-for i in range (len(sensor_pixel_sizes)):
-    FOV_initial = 409.6e-6
-    numPixels_sensor = int(FOV_initial // sensor_pixel_sizes[i])  # The dimension of the image
-    FOV = numPixels_sensor * sensor_pixel_sizes[i] # The real FOV
-    z2 = 0.001  # Sample to sensor distance
-    wavelength = 532e-9  # Wavelength
+sensor_pitch_size = 3.45e-6 # 传感器大小
+num_sensor = 4000 # 像素数量
+FOV = num_sensor * sensor_pitch_size # 视野大小
+wavelength = 532e-9  # Wavelength
+for i in range (len(z2)):
     ## Select the image's pixel size
-    candidates = [0.2e-6, 0.1e-6, 0.05e-6]
-    for p in candidates:
-        q = sensor_pixel_sizes[i] / p
-        if abs(q - round(q)) < 1e-6:
-            image_pixel_size = p
-            factor = int(round(q))
-            break
-    else:
-        raise ValueError(f"No matching image_pixel_size for sensor pixel {sensor_pixel_sizes[i]}")
-    # print(sensor_pixel_sizes[i], image_pixel_size)
-
-    factor = int(sensor_pixel_sizes[i] / image_pixel_size + 0.5)
+    image_pixel_size = 0.05e-6
+    factor = int(sensor_pitch_size / image_pixel_size + 0.5)
     numPixel_sample = int(FOV / image_pixel_size)
-
     # --- Generate the sample at the image plane---
     img_size = numPixel_sample
     # --- Generate the sample ---
@@ -246,8 +237,8 @@ for i in range (len(sensor_pixel_sizes)):
 
         # --- Create the sensor grid ---
         numPixels_sensor2 = sampled_hologram.shape[0]
-        x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
-        y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
+        x_sen = np.arange(num_sensor) - num_sensor / 2 - 1
+        y_sen = np.arange(num_sensor) - num_sensor / 2 - 1
         W_sen, H_sen = np.meshgrid(x_sen, y_sen)
 
         ## --- Code check ---
@@ -256,16 +247,16 @@ for i in range (len(sensor_pixel_sizes)):
         # print(f"hologram shape = {numPixels_sensor2}")
 
         # --- Reconstruction based on IPR algo ---
-        rec_field, rms_errors, ssim_errors = IPR(sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[i], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
+        rec_field, rms_errors, ssim_errors = IPR(sampled_hologram, z2, 50, 1.5e-20, sensor_pitch_size, W_sen, H_sen, num_sensor, am_object_field_down, wavelength, f_cut)
         am_rec_field = np.abs(rec_field)
         am_rec_field /= am_rec_field.max() # 归一化
         # Save the image
-        sample_size_sensor = numPixels_sensor # 传感器平面的图像像素数
+        sample_size_sensor = num_sensor # 传感器平面的图像像素数
         region_size_sensor = sample_size_sensor // 2
         start_sensor = (sample_size_sensor - region_size_sensor) // 2
         end_sensor = start_sensor + region_size_sensor
         region = am_rec_field[start_sensor:end_sensor, start_sensor:end_sensor]
-        plot_image(region,"rec field", r"/Users/wangmusi/Desktop/Research/new_rec_test/1mm1umtest",sensor_pixel_sizes[i], n)
+        plot_image(region,"rec field", r"/Users/wangmusi/Desktop/Research/new_rec_test/setup_test",z2[i], n)
         # --- Contrast ---
         region_size_sensor = sample_size_sensor // 4
         start_sensor = region_size_sensor // 2 * 3
@@ -281,7 +272,7 @@ for i in range (len(sensor_pixel_sizes)):
             line_vals = region2[y, :]
             PSF = line_vals ** 2
             ## Plot PSF
-            axis = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
+            axis = (np.arange(PSF.size) - PSF.size // 2) * z2[i] * 1e6
             # plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
             # plt.plot(axis, PSF, linewidth=2)
             # plt.xlabel('Position (μm)')
@@ -329,7 +320,7 @@ for i in range (len(sensor_pixel_sizes)):
         for x in x_indices:
             line_vals = region2[m: , m + x]
             PSF = line_vals ** 2
-            axis = (np.arange(PSF.size) - PSF.size // 2) * sensor_pixel_sizes[i] * 1e6
+            axis = (np.arange(PSF.size) - PSF.size // 2) * z2[i] * 1e6
             # plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
             # plt.plot(axis, PSF, linewidth=2)
             # plt.xlabel('Position (μm)')
@@ -372,14 +363,14 @@ for i in range (len(sensor_pixel_sizes)):
         standard = 1
         ## 判断条件
         if contrast_mean >= standard:
-            print(f"🌟[i={i}] Sensor pixel = {sensor_pixel_sizes[i] * 1e6:.2f}μm: "f"mean contrast = {contrast_mean} > {standard}，resolvable at {n * 1e6:.2f}μm")
+            print(f"🌟[i={i}] Sensor pixel = {z2[i] * 1e6:.2f}μm: "f"mean contrast = {contrast_mean} > {standard}，resolvable at {n * 1e6:.2f}μm")
             resolutions.append(n)
             break
         else:
             print(f"🚩[i={i}] Contrast value = {contrast_mean:.2f}, it's not resolvable at {n * 1e6:.2f}μm")
 
 ## 保存分辨率数据
-with open("/Users/wangmusi/Desktop/Research/new_rec_test/1/1.csv", "w", newline="") as csvfile:
+with open("/Users/wangmusi/Desktop/Research/new_rec_test/setup_test/result.csv", "w", newline="") as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(["index", "resolution_um"])
     for i, r in enumerate(resolutions):
@@ -387,22 +378,22 @@ with open("/Users/wangmusi/Desktop/Research/new_rec_test/1/1.csv", "w", newline=
 print("Results saved to resolutions.csv")
 
 # 转成 μm 单位方便阅读
-sensor_pitches_um = sensor_pixel_sizes * 1e6
-resolutions_um = np.array(resolutions) * 1e6
-
-plt.figure(figsize=(6,4))
-plt.plot(sensor_pitches_um, resolutions_um, linestyle='-')
-plt.xlabel('Sensor pitch (μm)')
-plt.ylabel('Resolved stripe period (μm)')
-plt.title('Resolution vs. Sensor Pitch Size')
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.tight_layout()
-
-# 保存
-out_path = 'resolution_vs_sensor_pitch2.png'
-plt.savefig(out_path, dpi=300)
-out_path = r'/Users/wangmusi/Desktop/Research/new_rec_test/1/resolution_vs_sensor_pitch.png'
-plt.savefig(out_path, dpi=300)
-print(f"✅ Plot saved to {out_path}")
-
-plt.show()
+# sensor_pitches_um = sensor_pixel_sizes * 1e6
+# resolutions_um = np.array(resolutions) * 1e6
+#
+# plt.figure(figsize=(6,4))
+# plt.plot(sensor_pitches_um, resolutions_um, linestyle='-')
+# plt.xlabel('Sensor pitch (μm)')
+# plt.ylabel('Resolved stripe period (μm)')
+# plt.title('Resolution vs. Sensor Pitch Size')
+# plt.grid(True, linestyle='--', alpha=0.6)
+# plt.tight_layout()
+#
+# # 保存
+# out_path = 'resolution_vs_sensor_pitch2.png'
+# plt.savefig(out_path, dpi=300)
+# out_path = r'/Users/wangmusi/Desktop/Research/new_rec_test/1/setup_test.png'
+# plt.savefig(out_path, dpi=300)
+# print(f"✅ Plot saved to {out_path}")
+#
+# plt.show()

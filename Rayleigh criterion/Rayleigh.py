@@ -140,7 +140,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-file_path = '/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/7_test.png'
+file_path = '/Users/wangmusi/Desktop/1.png'
 file_name = os.path.basename(file_path)
 m = re.search(r'(\d+(?:\.\d+)?)_test', file_name)
 value = float(m.group(1))
@@ -150,7 +150,7 @@ period = int(value * 1e-6 / 0.2e-6)
 
 # --- Set pixel size of the image and sensor ---
 sensor_pixel_sizes = [0.2e-6, 2e-6]  # 0.2µm for image, 1.6µm for sensor
-numPixels_image = 1024  # The dimension of the image
+numPixels_image = 242  # The dimension of the image
 FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
 z2 = 0.001  # Sample to sensor distance
 wavelength = 532e-9 # Wavelength
@@ -230,7 +230,7 @@ Sampled_hologram = am_undersampled_hologram ** 2
 # --- Reconstruction based on IPR algo ---
 rec_field, rms_errors, ssim_errors = IPR(Sampled_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down, wavelength, f_cut)
 am_rec_field = np.abs(rec_field)
-plot_image(am_rec_field, "rec field",'/Users/wangmusi/Desktop/Research/Reconstruction relationship/Distance2', z2, value)
+plot_image(am_rec_field, "rec field",'/Users/wangmusi/Desktop', z2, value)
 
 # --- Contrast ---
 # y_index = 65

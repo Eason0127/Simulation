@@ -19,7 +19,21 @@ def load_and_normalize_image(filepath):
 
 ## --- Plot image ---
 
-def plot_image2(amplitude,title):
+def plot_image2(amplitude, title):
+    # 转成 float，防止整数截断
+    amp = amplitude.astype(np.float32)
+    # 归一化到 [0,1]
+    amp = (amp - amp.min()) / (amp.max() - amp.min())
+
+    plt.figure(figsize=(6, 6))
+    # 强制显示范围为 [0,1]
+    im = plt.imshow(amp, cmap='gray', vmin=0, vmax=1)
+    plt.colorbar(im, label="Normalized amplitude")
+    plt.title(title)
+    plt.axis('off')
+    plt.show()
+
+def plot_image3(amplitude,title):
     plt.figure(figsize=(6, 6))
     plt.imshow(amplitude, cmap='gray')
     plt.colorbar(label="Amplitude")
@@ -27,12 +41,17 @@ def plot_image2(amplitude,title):
     plt.axis('off')
     plt.show()
 
-def plot_image(amplitude,title, save_dir, pixel, picture):
+def plot_image(amplitude, title, save_dir, pixel, picture):
+    # 先归一化到 [0,1]
+    amp = amplitude.astype(np.float32)
+    amp = (amp - amp.min()) / (amp.max() - amp.min())
+
     fig, ax = plt.subplots(figsize=(6, 6))
-    im = ax.imshow(amplitude, cmap='gray')
-    fig.colorbar(im, ax=ax, label="Amplitude")
+    im = ax.imshow(amp, cmap='gray', vmin=0, vmax=1)
+    fig.colorbar(im, ax=ax, label="Normalized amplitude")
     ax.set_title(title)
     ax.axis('off')
+
     # —— 保存 ——
     if save_dir is not None and pixel is not None and picture is not None:
         os.makedirs(save_dir, exist_ok=True)
@@ -42,7 +61,6 @@ def plot_image(amplitude,title, save_dir, pixel, picture):
         plt.close(fig)
         print(f"✅ 图像已保存到：{save_path}")
     else:
-        # 如果不满足保存条件，仅关闭 figure
         plt.close(fig)
 
 ## --- Filter image ---
@@ -152,8 +170,8 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 ## --- Set pitch size of the image and sensor ---
-sensor_pixel_sizes = np.arange(0.2, 3, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
-spacing_um = np.arange(5, 20, 0.5) * 1e-6
+sensor_pixel_sizes = np.arange(1, 4, 0.05) * 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
+spacing_um = np.arange(4, 20, 0.5) * 1e-6
 resolutions = [] # Store the reconstruction result
 for i in range (len(sensor_pixel_sizes)):
     FOV_initial = 409.6e-6
@@ -189,7 +207,7 @@ for i in range (len(sensor_pixel_sizes)):
         start = (img_size - region_size) // 2
         end = start + region_size
         # 不要黑色为0
-        background_level = 0
+        background_level = 102
         img = np.full((img_size, img_size), background_level, dtype=np.uint8)
         # Draw vertical stripes in the top half
         for x in range(start, end):
@@ -201,14 +219,14 @@ for i in range (len(sensor_pixel_sizes)):
                 img[y, start:end] = 255
         object = img.astype(float) / 255.0
         object_shape = object.shape[0]
-        plot_image2(object,"object")
+        plot_image3(object,"object")
         # --- Define the spatial grid of sample plane ---
         g = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
         h = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
         W, H = np.meshgrid(g, h)
 
         # ---Define the sample field ---
-        am = np.exp(-2 * object)
+        am = np.exp(-0.5 * object)
         ph0 = 3
         ph = ph0 * object
         object_field = am * np.exp(1j * ph)
@@ -250,6 +268,7 @@ for i in range (len(sensor_pixel_sizes)):
         end_sensor = start_sensor + region_size_sensor
         region = am_rec_field[start_sensor:end_sensor, start_sensor:end_sensor]
         plot_image(region,"rec field", r"/Users/wangmusi/Desktop/Research/new_rec_test/0.5",sensor_pixel_sizes[i], n)
+        plot_image2(region,"rec")
         # 1) Read the value on the lines
         y_indices = [5,6,7,8,9,10,11,12,13,14,15,18,20]
         x_indices = [-10,-9,-8,-6,-5,-3,-2,-1,0,2,3,4,5,7,8,9,10]

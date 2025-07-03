@@ -92,7 +92,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('../pic/circle.png')
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/pic/full_image.png')
 plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3

@@ -151,7 +151,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-file_path = '/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/5_test.png'
+file_path = '/Users/wangmusi/Desktop/1.png'
 file_name = os.path.basename(file_path)
 m = re.search(r'(\d+(?:\.\d+)?)_test', file_name)
 value = float(m.group(1))

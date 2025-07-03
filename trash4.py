@@ -1,66 +1,205 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from numpy.fft import fft2, ifft2, fftshift, ifftshift
+from PIL import Image
+from skimage.metrics import structural_similarity as ssim
+from skimage.transform import downscale_local_mean
+import cairosvg
 
-# 给定参数
-pitch_size = 3.45e-6  
-w = pitch_size * 4000  
-wavelength = 532e-9   
+def load_and_normalize_image(filepath):
+    image = Image.open(filepath).convert('L')
+    grayscale_data = np.array(image, dtype=np.float32)
+    return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
 
-# 空间采样频率和采样分辨率（μm）
-fs = 1 / (2 * pitch_size)
-rho_s = 1 / fs          # m
-rho_s_um = rho_s * 1e6  # μm
+def plot_image(amplitude,):
+    plt.figure(figsize=(6, 6))
+    plt.imshow(amplitude, cmap='gray')
+    plt.colorbar(label="Amplitude")
+    plt.title(f"Amplitude")
+    plt.axis('off')
+    plt.show()
 
-# z2 从 0 到 300 mm
-z2_mm = np.linspace(0, 300, 1000)
-z2 = z2_mm * 1e-3
+def bandlimit_filter(image, pixelSize):
+    N = image.shape[0]
+    F = fftshift(fft2(image))
+    k = np.arange(N) - N / 2
+    f = k / (N * pixelSize)
+    FX, FY = np.meshgrid(f, f)
+    f_magnitude = np.sqrt(FX ** 2 + FY ** 2)
+    #  Nyquist frequency
+    f_max = 312500 # 1 / (2 * pixelSize)
+    mask = f_magnitude <= f_max
+    F_filtered = F * mask
+    image_filtered = ifft2(ifftshift(F_filtered))
+    return image_filtered
 
-# 计算 NA(z2), fx(z2) 以及成像分辨率 rho_x(z2)=1/fx
-NA = (w / 2) / np.sqrt((w / 2)**2 + z2**2)
-fx = NA / wavelength
-rho_x = 1 / fx          # m
-rho_x_um = rho_x * 1e6  # μm
+def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels,f_cut):
+    FX = W / (pixelSize * numPixels)
+    FY = H / (pixelSize * numPixels)
+    k = 2 * np.pi / wavelength
+    square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
+    valid_mask = (wavelength ** 2  + wavelength ** 2 ) <= f_cut ** 2
+    square_root[~valid_mask] = 0
+    temp = np.exp(1j * k * distance * square_root)
+    return temp
 
-# 交点：fx = fs ⇒ rho_x = rho_s
-z_intersect = np.sqrt((w/2)**2 * (1/(fs * wavelength)**2 - 1))
-z_int_mm = z_intersect * 1e3
+def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels,f_cut):
+    GT = fftshift(fft2(ifftshift(field)))
+    transfer = Transfer_function(W, H, distance, 532e-9, pixelSize, numPixels,f_cut)
+    gt_prime = fftshift(ifft2(ifftshift(GT * transfer)))
+    return gt_prime
+
+# --- IPR ---
+def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after,f_cut):
+    update_phase = []
+    last_field = None
+    rms_errors = []
+    ssim_errors = []
+
+    for k in range(k_max):
+        # a) Sensor plane
+        if k == 0:
+            phase0 = np.zeros(Measured_amplitude.shape)
+            field1 = Measured_amplitude * np.exp(1j * phase0)
+        else:
+            field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
+        # b) Backpropagation and apply constraint
+        field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels, f_cut)
+        phase_field2 = np.angle(field2)  # phase
+        amp_field2 = np.abs(field2)  # amplitude
+        abso = -np.log(amp_field2 + 1e-8) #1e-8 to prevent 0 value
+        # Apply constraints
+        abso[abso < 0] = 0
+        phase_field2[abso < 0] = 0
+        amp_field2 = np.exp(-abso)
+        field22 = amp_field2 * np.exp(1j * phase_field2)
+        # c) Forward propagation
+        field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels, f_cut)
+        amp_field3 = np.abs(field3)
+        phase_field3 = np.angle(field3)
+        update_phase.append(phase_field3)
+
+        # d) Backpropagate to get the image
+        field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels, f_cut)
+        amp_field4 = np.abs(field4)
+        last_field = field4
+        # Error calculation
+        if k > 0:
+            rms_error = np.sqrt(np.mean((amp_field_after - amp_field4) ** 2))
+            rms_errors.append(rms_error)
+            print(f"Iteration {k}: RMS Error = {rms_error}")
+
+            ssim_value = ssim(amp_field_after, amp_field4, data_range=amp_field_after.max() - amp_field_after.min())
+            ssim_errors.append(ssim_value)
+            print(f"Iteration {k}: SSIM = {ssim_value}")
+
+            # threshold
+            if rms_error < convergence_threshold:
+                print(f"Converged at iteration {k}")
+                return last_field, rms_errors, ssim_errors
+    # Draw RMS
+    plt.subplot(2, 1, 1)
+    plt.plot(rms_errors, 'r-', linewidth=2, label='RMS Error')
+    plt.title('Convergence Analysis')
+    plt.ylabel('RMS Error')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    # Draw SSIM
+    plt.subplot(2, 1, 2)
+    plt.plot(ssim_errors, 'b-', linewidth=2, label='SSIM')
+    plt.xlabel('Iteration')
+    plt.ylabel('SSIM')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('convergence_metrics.png', dpi=300)
+    plt.show()
+    return last_field, rms_errors, ssim_errors
+
+#----------------------------------------Divided Line-------------------------------------------
+
+# --- Read image ---
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/8_test.png')
 
 
-fig, ax = plt.subplots(figsize=(8,5))
+# --- Set pixel size of the image and sensor ---
+sensor_pixel_sizes = [0.2e-6, 1e-6]  # 1µm for image, 1.6µm for sensor
+numPixels_image = 1024  # The dimension of the image
+FOV = numPixels_image * sensor_pixel_sizes[0]  # Calculate image's FOV
+z2 = 0.005  # Sample to sensor distance
 
-# 画分辨率曲线
-ax.plot(z2_mm, rho_x_um,
-         label=r'$\rho_x(z_2)=\frac{1}{f_x(z_2)}$')
+# --- Define the spatial grid ---
+x = np.arange(numPixels_image) - numPixels_image / 2 - 1
+y = np.arange(numPixels_image) - numPixels_image / 2 - 1
+W, H = np.meshgrid(x, y)
 
-# 标出交点
-ax.plot(z_int_mm, rho_s_um, 'o', label='Intersection')
-ax.axvline(x=z_int_mm,
-            color='gray',
-            linestyle=':',
-            linewidth=1)
+NA = (FOV / 2) / np.sqrt((FOV / 2) ** 2 + z2 ** 2)
+f_cut = NA / 532e-9
+# --- Filter the image before forward propagation ---
+# object_filtered = bandlimit_filter(object, sensor_pixel_sizes[1])
+# am_object_filtered = np.abs(object_filtered)
+# am_object = np.abs(object)
 
-# 注释交点坐标
-ax.text(z_int_mm, rho_s_um*1.1,
-         f'$z_2={z_int_mm:.1f}\\,$mm\n$\\rho={rho_s_um:.1f}\\,\\mu$m',
-         ha='center', va='bottom',
-         backgroundcolor='white')
+# --- Plot the two images ---
+# plt.figure(figsize=(12, 6))
+# plt.subplot(1, 2, 1)
+# plt.imshow(am_object, cmap='gray')
+# plt.title("Original Image")
+# plt.axis('off')
+# plt.subplot(1, 2, 2)
+# plt.imshow(am_object_filtered, cmap='gray')
+# plt.title("Bandlimited Image")
+# plt.axis('off')
+# plt.show()
 
-# 把 x=0 和 y=0 的轴穿过原点
-ax.spines['left'].set_position('zero')    # y 轴移到 x=0
-ax.spines['bottom'].set_position('zero')  # x 轴移到 y=0
+# ---Define the sample field ---
+am = np.exp(-1.6 * object)
+ph0 = 3
+ph = ph0 * object
+object_field = am * np.exp(1j * ph)
+am_object_field = np.abs(object_field)
+plot_image(am_object_field)
 
-# 隐藏上、右两条多余的脊线
-ax.spines['right'].set_color('none')
-ax.spines['top'].set_color('none')
+# --- Acquire the hologram ---
+hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes[0], z2, W, H, 1024, f_cut)
+am_hologram = np.abs(hologram_field)
+# plot_image(am_hologram)
 
-# 只在「下」和「左」显示刻度
-ax.xaxis.set_ticks_position('bottom')
-ax.yaxis.set_ticks_position('left')
+# --- Downsample the hologram based on the sensor pixel size ---
+undersample_factor = int(sensor_pixel_sizes[1] / sensor_pixel_sizes[0])
+am_undersampled_hologram = downscale_local_mean(am_hologram, (undersample_factor, undersample_factor))
+# plot_image(am_undersampled_hologram)
+am_object_field_down = downscale_local_mean(am_object_field, (undersample_factor, undersample_factor))
+plot_image(am_object_field_down)
 
-ax.set_xlabel('Propagation distance $z_2$ (mm)')
-ax.set_ylabel('Resolution (μm)')
-ax.set_title('Resolution vs. $z_2$ (0–300 mm)')
-ax.legend()
-ax.grid(True)
-plt.tight_layout()
-plt.show()
+
+# --- Create the sensor grid ---
+numPixels_sensor = am_undersampled_hologram.shape[0]
+x_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
+y_sen = np.arange(numPixels_sensor) - numPixels_sensor / 2 - 1
+W_sen, H_sen = np.meshgrid(x_sen, y_sen)
+
+# --- Adding noise ---
+# At first, I will just consider the white Guassian noise. If nothing wrong then I will go deeper.
+scaling_factor = 8000 # Assume full well capacity is 8000e-
+ideal_intensity = (am_undersampled_hologram ** 2) * scaling_factor # Transform intensity to the scale of photons or electrons
+noise_electrons = 0 # Choose the number of noise electrons
+noise_standard = noise_electrons / scaling_factor # Transform noise form scale of electrons to scale of intensity
+white_Gaussian_noise = np.random.normal(0, noise_standard, ideal_intensity.shape) # Simulate the noise
+am_noise = np.abs(white_Gaussian_noise)
+plot_image(am_noise)
+am_hologram_with_noise = am_undersampled_hologram + white_Gaussian_noise
+
+# --- Calculate SNR ---
+noise_power = np.mean(white_Gaussian_noise ** 2)
+signal_power = np.mean(am_undersampled_hologram ** 2)
+SNR = 10 * np.log10(signal_power / noise_power)
+
+
+# --- Reconstruction based on IPR algo ---
+rec_field, rms_errors, ssim_errors = IPR(am_hologram_with_noise, z2, 50, 1.5e-20, sensor_pixel_sizes[1], W_sen, H_sen, numPixels_sensor, am_object_field_down,f_cut)
+am_rec_field = np.abs(rec_field)
+plot_image(am_rec_field)
+print("SNR is %f dB" % SNR)
+
+

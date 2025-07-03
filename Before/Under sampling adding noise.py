@@ -119,13 +119,8 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
 #----------------------------------------Divided Line-------------------------------------------
 
 # --- Read image ---
-cairosvg.svg2png(url='pic/USAF-1951.svg', write_to='USAF_target.png')
-object = load_and_normalize_image('USAF/USAF_target.png')
-plt.figure(figsize=(6, 6))
-plt.imshow(object, cmap='gray')
-plt.title("Converted USAF Target")
-plt.axis('off')
-plt.show()
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/pic/full_image.png')
+
 
 # --- Set pixel size of the image and sensor ---
 sensor_pixel_sizes = [0.4e-6, 1.6e-6]  # 1µm for image, 1.6µm for sensor
