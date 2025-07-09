@@ -10,7 +10,6 @@ import re
 import math
 from PIL import Image
 
-from trash2 import image_pixel_size
 
 
 ## --- Read image and normalization ---
@@ -57,7 +56,7 @@ def plot_image(amplitude, title, save_dir, pixel, picture):
     # —— 保存 ——
     if save_dir is not None and pixel is not None and picture is not None:
         os.makedirs(save_dir, exist_ok=True)
-        filename = f"{pixel*1e6:.2f}um-{picture*1e6:.2f}um.png"
+        filename = f"{pixel*1e3:.2f}mm-{picture*1e6:.2f}um.png"
         save_path = os.path.join(save_dir, filename)
         fig.savefig(save_path, bbox_inches='tight')
         plt.close(fig)
@@ -170,18 +169,17 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
     return last_field, rms_errors, ssim_errors
 
 #----------------------------------------Divided Line-------------------------------------------
-
 ## --- Set pitch size of the image and sensor ---
-z2 = np.arange(1, 20, 1) * 1e-6  # 样本—传感器间距
-spacing_um = np.arange(5, 20, 1) * 1e-6 # 生成的光栅间距设置
+z2 = np.arange(0.5, 100, 1) * 1e-3  # 样本—传感器间距
+spacing_um = np.arange(5, 50, 1) * 1e-6 # 生成的光栅间距设置
 resolutions = [] # Store the reconstruction result
-sensor_pitch_size = 3.45e-6 # 传感器大小
+sensor_pitch_size = 1e-6 # 传感器大小
 num_sensor = 4000 # 像素数量
 FOV = num_sensor * sensor_pitch_size # 视野大小
 wavelength = 532e-9  # Wavelength
 for i in range (len(z2)):
     ## Select the image's pixel size
-    image_pixel_size = 0.05e-6
+    image_pixel_size = 0.5e-6
     factor = int(sensor_pitch_size / image_pixel_size + 0.5)
     numPixel_sample = int(FOV / image_pixel_size)
     # --- Generate the sample at the image plane---
@@ -193,8 +191,8 @@ for i in range (len(z2)):
         # Create a blank (black) image
         img = np.zeros((img_size, img_size), dtype=np.uint8)
         # Define the central square region
-        region_size = img_size // 4
-        start = region_size // 2 * 3
+        region_size = img_size // 35
+        start = region_size // 20
         end = start + region_size
         # 不要黑色为0
         background_level = 0
@@ -209,28 +207,29 @@ for i in range (len(z2)):
                 img[y, start:end] = 255
         object = img.astype(float) / 255.0
         object_shape = object.shape[0]
-        # plot_image3(object,"object")
+        plot_image3(object,"object")
         # --- Define the spatial grid of sample plane ---
         g = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
         h = np.arange(numPixel_sample) - numPixel_sample / 2 - 1
         W, H = np.meshgrid(g, h)
-
+        print("Finished1")
         # ---Define the sample field ---
         am = np.exp(-0.5 * object)
         ph0 = 3
         ph = ph0 * object
         object_field = am * np.exp(1j * ph)
         am_object_field = np.abs(object_field)
+        print("Finished2")
         # --- The Filtering issue due to NA limitation ---
         # This cut-off frequency is input into the transfer function
-        NA = (FOV / 2) / np.sqrt((FOV / 2) ** 2 + z2 ** 2) # Numerical Aperture
+        NA = (FOV / 2) / np.sqrt((FOV / 2) ** 2 + z2[i] ** 2) # Numerical Aperture
         f_cut = NA / wavelength # The lateral frequency on sensor plane
         # --- Acquire the hologram ---
-        hologram_field = angular_spectrum_method(object_field, image_pixel_size, z2, W, H, numPixel_sample, wavelength, f_cut)
+        hologram_field = angular_spectrum_method(object_field, image_pixel_size, z2[i], W, H, numPixel_sample, wavelength, f_cut)
         in_hologram = np.abs(hologram_field) ** 2
         am_hologram = np.sqrt(in_hologram)
         am_hologram /= am_hologram.max()
-
+        print("Finished3")
         # --- Calculate the dimension of sampled hologram ---
         sampled_hologram = am_hologram[::factor, ::factor]
         am_object_field_down = am_object_field[::factor, ::factor]
@@ -247,135 +246,18 @@ for i in range (len(z2)):
         # print(f"hologram shape = {numPixels_sensor2}")
 
         # --- Reconstruction based on IPR algo ---
-        rec_field, rms_errors, ssim_errors = IPR(sampled_hologram, z2, 50, 1.5e-20, sensor_pitch_size, W_sen, H_sen, num_sensor, am_object_field_down, wavelength, f_cut)
+        rec_field, rms_errors, ssim_errors = IPR(sampled_hologram, z2[i], 5, 1.5e-20, sensor_pitch_size, W_sen, H_sen, num_sensor, am_object_field_down, wavelength, f_cut)
         am_rec_field = np.abs(rec_field)
         am_rec_field /= am_rec_field.max() # 归一化
         # Save the image
         sample_size_sensor = num_sensor # 传感器平面的图像像素数
-        region_size_sensor = sample_size_sensor // 2
+        region_size_sensor = sample_size_sensor // 4
         start_sensor = (sample_size_sensor - region_size_sensor) // 2
         end_sensor = start_sensor + region_size_sensor
         region = am_rec_field[start_sensor:end_sensor, start_sensor:end_sensor]
+        print("Finished4")
         plot_image(region,"rec field", r"/Users/wangmusi/Desktop/Research/new_rec_test/setup_test",z2[i], n)
-        # --- Contrast ---
-        region_size_sensor = sample_size_sensor // 4
-        start_sensor = region_size_sensor // 2 * 3
-        end_sensor = start_sensor + region_size_sensor
-        region2 = am_rec_field[start_sensor:end_sensor, start_sensor:end_sensor]
-        # 1) Read the value on the lines
-        y_indices = [5,6,7,8,9,10,11,12,13,14,15,18,20]
-        x_indices = [-10,-9,-8,-6,-5,-3,-2,-1,0,2,3,4,5,7,8,9,10]
-        contrasts = []
-        m = region_size_sensor // 2
-        ## 上半区域的对比度
-        for y in y_indices:
-            line_vals = region2[y, :]
-            PSF = line_vals ** 2
-            ## Plot PSF
-            axis = (np.arange(PSF.size) - PSF.size // 2) * z2[i] * 1e6
-            # plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
-            # plt.plot(axis, PSF, linewidth=2)
-            # plt.xlabel('Position (μm)')
-            # plt.ylabel('PSF Intensity')
-            # plt.title(f'PSF Profile, sensor pitch = {sensor_pixel_sizes[i] * 1e6:.2f}μm, spacing = {n * 1e6:.2f}μm')
-            # plt.grid(True)
-            # plt.tight_layout()
-            # plt.show()
-            ## 2) Find the maximum of the bright stripe and the minimum of the dark stripe.
-            try:
-                period_sensor = grating_period // factor
-                stripe_width_sensor = stripe_width // factor
-                size = PSF.size
 
-                # 跳过不合理情况
-                if stripe_width_sensor < 1 or period_sensor <= stripe_width_sensor or size < period_sensor:
-                    raise ValueError("窗口太小，跳过")
-
-                n_periods = size // period_sensor
-                PSF_cut = PSF[:n_periods * period_sensor]
-                I_max = []
-                I_min = []
-                contrast_test = []
-                for k in range(n_periods):
-                    trough_block = PSF_cut[k * period_sensor: k * period_sensor + stripe_width_sensor]
-                    peak_block = PSF_cut[k * period_sensor + stripe_width_sensor: (k + 1) * period_sensor]
-                    I_min.append(trough_block.mean())
-                    I_max.append(peak_block.max())
-                # print("亮条纹平均值")
-                # print(I_max,"\n")
-                # print("暗条纹平均值")
-                # print(I_min)
-                for k in range(len(I_max) - 1):
-                    I_peak = min(I_max[k], I_max[k + 1])
-                    I_trough = I_min[k]
-                    contrasts.append((I_peak - I_trough) / (I_peak + I_trough))
-                    contrast_test.append((I_peak - I_trough) / (I_peak + I_trough)) # 计算每个PSF上的对比度均值，方便检查
-                contrast1 = np.mean(contrast_test)
-                # print(f"🐶{y}处的PSF上的对比度的值为{contrast1}.")
-            except Exception as e:
-                # 这里捕获上面抛出的跳过或其它错误，直接 continue
-                # print(f"Contrast 计算时出错 ({e})，跳过 n={n * 1e6:.2f}μm")
-                continue
-        ## 下半区域的对比度
-        for x in x_indices:
-            line_vals = region2[m: , m + x]
-            PSF = line_vals ** 2
-            axis = (np.arange(PSF.size) - PSF.size // 2) * z2[i] * 1e6
-            # plt.figure(figsize=(6, 4))  # <-- 新建一个 figure
-            # plt.plot(axis, PSF, linewidth=2)
-            # plt.xlabel('Position (μm)')
-            # plt.ylabel('PSF Intensity')
-            # plt.title(f'PSF Profile, sensor pitch = {sensor_pixel_sizes[i] * 1e6:.2f}μm, spacing = {n * 1e6:.2f}μm')
-            # plt.grid(True)
-            # plt.tight_layout()
-            # plt.show()
-            try:
-                period_sensor = grating_period // factor
-                stripe_width_sensor = stripe_width // factor
-                size = PSF.size
-                # 跳过不合理情况
-                if stripe_width_sensor < 1 or period_sensor <= stripe_width_sensor or size < period_sensor:
-                    raise ValueError("窗口太小，跳过")
-
-                n_periods = size // period_sensor
-                PSF_cut = PSF[:n_periods * period_sensor]
-                I_max = []
-                I_min = []
-                contrast_test = []
-                for k in range(n_periods):
-                    trough_block = PSF_cut[k * period_sensor: k * period_sensor + stripe_width_sensor]
-                    peak_block = PSF_cut[k * period_sensor + stripe_width_sensor: (k + 1) * period_sensor]
-                    I_min.append(trough_block.mean())
-                    I_max.append(peak_block.max())
-                for k in range(len(I_max) - 1):
-                    I_peak = min(I_max[k], I_max[k + 1])
-                    I_trough = I_min[k]
-                    contrasts.append((I_peak - I_trough) / (I_peak + I_trough))
-                    contrast_test.append((I_peak - I_trough) / (I_peak + I_trough)) # 计算每个PSF上的对比度均值，方便检查
-                contrast1 = np.mean(contrast_test)
-                # print(f"🐶{x}处的PSF上的对比度的值为{contrast1}.")
-            except Exception as e:
-                # 这里捕获上面抛出的跳过或其它错误，直接 continue
-                print(f"Contrast 计算时出错 ({e})，跳过 n={n * 1e6:.2f}μm")
-                continue
-        ## 计算总的对比度
-        contrast_mean = np.mean(contrasts)
-        standard = 1
-        ## 判断条件
-        if contrast_mean >= standard:
-            print(f"🌟[i={i}] Sensor pixel = {z2[i] * 1e6:.2f}μm: "f"mean contrast = {contrast_mean} > {standard}，resolvable at {n * 1e6:.2f}μm")
-            resolutions.append(n)
-            break
-        else:
-            print(f"🚩[i={i}] Contrast value = {contrast_mean:.2f}, it's not resolvable at {n * 1e6:.2f}μm")
-
-## 保存分辨率数据
-with open("/Users/wangmusi/Desktop/Research/new_rec_test/setup_test/result.csv", "w", newline="") as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerow(["index", "resolution_um"])
-    for i, r in enumerate(resolutions):
-        writer.writerow([i, r*1e6])
-print("Results saved to resolutions.csv")
 
 # 转成 μm 单位方便阅读
 # sensor_pitches_um = sensor_pixel_sizes * 1e6
