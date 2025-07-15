@@ -6,12 +6,26 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 from scipy.ndimage import gaussian_filter, sobel
 from tqdm import tqdm
+import imageio.v2 as imageio
 
 # --- Read image and normalization ---
 def load_and_normalize_image(filepath):
-    image = Image.open(filepath).convert('L')
-    grayscale_data = np.array(image, dtype=np.float32)
-    return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.hdr':
+        # 用 imageio 读取 Radiance HDR
+        hdr = imageio.imread(filepath, format='HDR-FI')
+        # 线性归一化
+        hdr = hdr.astype(np.float32)
+        # 简单线性映射到 [0,1]
+        ldr = hdr / np.max(hdr)
+        # 转灰度
+        gray = np.dot(ldr[..., :3], [0.299, 0.587, 0.114])
+        return gray
+    else:
+        # 其它格式保持不变
+        img = Image.open(filepath).convert('L')
+        arr = np.array(img, dtype=np.float32)
+        return (arr - arr.min()) / (arr.max() - arr.min())
 
 # --- Plot image ---
 
@@ -139,20 +153,14 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
         last_field = field4
     return last_field
 
-object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/1.png") # Read the image
-background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/22.png") # Read the background
-# 加个小常数防止除零
-eps = 1e-6
-ratio = object_intensity / (background_intensity + eps)
-# 归一化比值到合理范围
-ratio = np.clip(ratio, 0, np.percentile(ratio, 99))
-# 最终用来迭代的振幅
-measured_amplitude = np.sqrt(ratio)
+
+object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\HDR\output_ldr.png") # Read the image
+measured_amplitude = np.sqrt(object_intensity)
 
 # 系统参数
 pitch_size = 5.86e-6
-num_pixel = 400
-z_list = np.linspace(3e-2, 2e-1, 300)
+num_pixel = 1216
+z_list = np.linspace(3e-2, 2e-1, 500)
 
 # 构建坐标系
 x = np.arange(num_pixel) - num_pixel / 2 - 1
@@ -161,5 +169,8 @@ W, H = np.meshgrid(x, y)
 z2, focus_vals = autofocus(measured_amplitude,z_list,pitch_size,W,H,num_pixel)
 print(f"最佳对焦距离：{z2:.3f} m")
 
-
+# 执行重建算法
+rec_field = IPR(measured_amplitude,z2,50,pitch_size,W,H,num_pixel)
+am_rec = np.abs(rec_field)
+plot_image2(am_rec,"rec")
 

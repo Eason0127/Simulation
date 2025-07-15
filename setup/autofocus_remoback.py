@@ -140,8 +140,8 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
         last_field = field4
     return last_field
 
-object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/1.png") # Read the image
-background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/22.png") # Read the background
+object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\HDR\output.hdr") # Read the image
+background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/2.png") # Read the background
 # 加个小常数防止除零
 eps = 1e-6
 ratio = object_intensity / (background_intensity + eps)
