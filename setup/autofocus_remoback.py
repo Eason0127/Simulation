@@ -86,7 +86,8 @@ def autofocus(field_sensor, z_list, pixel_size, W, H, numpixels):
     """
     focus_vals = []
     for z in tqdm(z_list):
-        field_obj = angular_spectrum_method(field_sensor,pixel_size,z, W, H, numpixels)
+        field_sensor2 = field_sensor * np.exp(1j*0)
+        field_obj = angular_spectrum_method(field_sensor2,pixel_size,-z, W, H, numpixels)
         focus_vals.append(focus_metric(field_obj))
     focus_vals = np.array(focus_vals)
     idx = np.argmax(focus_vals)
@@ -139,8 +140,8 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
         last_field = field4
     return last_field
 
-object_intensity = load_and_normalize_image("C:\Phythonthings\github\Simulation\setup_pic\hologram8.png") # Read the image
-background_intensity = load_and_normalize_image("C:\Phythonthings\github\Simulation\setup_pic/background8.png") # Read the background
+object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/1.png") # Read the image
+background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/22.png") # Read the background
 # 加个小常数防止除零
 eps = 1e-6
 ratio = object_intensity / (background_intensity + eps)
@@ -148,17 +149,17 @@ ratio = object_intensity / (background_intensity + eps)
 ratio = np.clip(ratio, 0, np.percentile(ratio, 99))
 # 最终用来迭代的振幅
 measured_amplitude = np.sqrt(ratio)
-
 # 系统参数
 pitch_size = 5.86e-6
 num_pixel = 1216
-z_list = np.linspace(3e-2, 2e-1, 300)
-
+z_list = np.linspace(3e-2, 1e-1, 100)
 # 构建坐标系
 x = np.arange(num_pixel) - num_pixel / 2 - 1
 y = np.arange(num_pixel) - num_pixel / 2 - 1
 W, H = np.meshgrid(x, y)
-z2, focus_vals = autofocus(measured_amplitude,z_list,pitch_size,W,H,num_pixel)
+z0, focus_vals = autofocus(measured_amplitude,z_list,pitch_size,W,H,num_pixel)
+z_list_fine = np.linspace(z0-5e-3, z0+5e-3, 200)
+z2, focus_vals2 = autofocus(measured_amplitude,z_list_fine,pitch_size,W,H,num_pixel)
 print(f"最佳对焦距离：{z2:.3f} m")
 
 
