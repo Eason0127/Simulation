@@ -154,12 +154,12 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
     return last_field
 
 
-object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\HDR\output_ldr.png") # Read the image
+object_intensity = load_and_normalize_image(r"C:\Users\GOG\Desktop\Research\HDR2\hdr_float32.tif") # Read the image
 measured_amplitude = np.sqrt(object_intensity)
 
 # 系统参数
 pitch_size = 5.86e-6
-num_pixel = 1216
+num_pixel = 800
 z_list = np.linspace(3e-2, 2e-1, 500)
 
 # 构建坐标系

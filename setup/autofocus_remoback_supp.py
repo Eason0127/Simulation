@@ -133,10 +133,10 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
         field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels)
         if k % 2 == 0 and k > 0:
             if k == 2:
-                new_S = update_support_absorption_simple(field2, sigma=6, alpha=0.05)
+                new_S = update_support_absorption_simple(field2, sigma=4, alpha=0.05)
                 S = new_S
             else:
-                new_S = update_support_absorption_simple(field2, sigma=6, alpha=0.05)
+                new_S = update_support_absorption_simple(field2, sigma=4, alpha=0.05)
                 S = S & new_S  # 合并：只增不减，永远保留历史样本区
         mask_bg = ~S
         if np.any(mask_bg):
@@ -165,8 +165,8 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
         last_field = field4
     return last_field
 
-object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/1.png") # Read the image
-background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/22.png") # Read the background
+object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop/400NA.png") # Read the image
+background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop/2.png") # Read the background
 # 加个小常数防止除零
 eps = 1e-6
 ratio = object_intensity / (background_intensity + eps)
@@ -174,12 +174,10 @@ ratio = object_intensity / (background_intensity + eps)
 ratio = np.clip(ratio, 0, np.percentile(ratio, 99))
 # 最终用来迭代的振幅
 measured_amplitude = np.sqrt(ratio)
-
 # 系统参数
 pitch_size = 5.86e-6
-num_pixel = 400
-z_list = np.linspace(3e-2, 1e-1, 100)
-
+num_pixel = 600
+z_list = np.linspace(3e-2, 2e-1, 100)
 # 构建坐标系
 x = np.arange(num_pixel) - num_pixel / 2 - 1
 y = np.arange(num_pixel) - num_pixel / 2 - 1

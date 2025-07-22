@@ -140,8 +140,8 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
         last_field = field4
     return last_field
 
-object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\HDR\output.hdr") # Read the image
-background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop\Research\image_store/2.png") # Read the background
+object_intensity = load_and_normalize_image("C:/Users\GOG\Desktop/400NA.png") # Read the image
+background_intensity = load_and_normalize_image("C:/Users\GOG\Desktop/2.png") # Read the background
 # 加个小常数防止除零
 eps = 1e-6
 ratio = object_intensity / (background_intensity + eps)
@@ -151,8 +151,8 @@ ratio = np.clip(ratio, 0, np.percentile(ratio, 99))
 measured_amplitude = np.sqrt(ratio)
 # 系统参数
 pitch_size = 5.86e-6
-num_pixel = 1216
-z_list = np.linspace(3e-2, 1e-1, 100)
+num_pixel = 600
+z_list = np.linspace(3e-2, 2e-1, 100)
 # 构建坐标系
 x = np.arange(num_pixel) - num_pixel / 2 - 1
 y = np.arange(num_pixel) - num_pixel / 2 - 1
