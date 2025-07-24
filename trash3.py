@@ -1,23 +1,33 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.fft import fft2, ifft2, fftshift, ifftshift, fft, fftfreq
-from PIL import Image
-from skimage.metrics import structural_similarity as ssim
-from scipy.signal import find_peaks
-import csv
 import os
-import re
-import math
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
+from scipy.ndimage import gaussian_filter, sobel
+from tqdm import tqdm
+import imageio.v2 as imageio
 
-## --- Read image and normalization ---
+# --- Read image and normalization ---
 def load_and_normalize_image(filepath):
-    image = Image.open(filepath).convert('L')
-    grayscale_data = np.array(image, dtype=np.float32)
-    return (grayscale_data - grayscale_data.min()) / (grayscale_data.max() - grayscale_data.min())
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.hdr':
+        # 用 imageio 读取 Radiance HDR
+        hdr = imageio.imread(filepath, format='HDR-FI')
+        # 线性归一化
+        hdr = hdr.astype(np.float32)
+        # 简单线性映射到 [0,1]
+        ldr = hdr / np.max(hdr)
+        # 转灰度
+        gray = np.dot(ldr[..., :3], [0.299, 0.587, 0.114])
+        return gray
+    else:
+        # 其它格式保持不变
+        img = Image.open(filepath).convert('L')
+        arr = np.array(img, dtype=np.float32)
+        return (arr - arr.min()) / (arr.max() - arr.min())
 
-## --- Plot image ---
+# --- Plot image ---
 
 def plot_image2(amplitude, title):
     # 转成 float，防止整数截断
@@ -33,80 +43,85 @@ def plot_image2(amplitude, title):
     plt.axis('off')
     plt.show()
 
-def plot_image3(amplitude,title):
-    plt.figure(figsize=(6, 6))
-    plt.imshow(amplitude, cmap='gray')
-    plt.colorbar(label="Amplitude")
-    plt.title(title)
-    plt.axis('off')
-    plt.show()
-
-def plot_image(amplitude, title, save_dir, pixel, picture):
-    # 先归一化到 [0,1]
-    amp = amplitude.astype(np.float32)
-    amp = (amp - amp.min()) / (amp.max() - amp.min())
-
+def plot_image(amplitude,title, save_dir, i):
     fig, ax = plt.subplots(figsize=(6, 6))
-    im = ax.imshow(amp, cmap='gray', vmin=0, vmax=1)
-    fig.colorbar(im, ax=ax, label="Normalized amplitude")
+    im = ax.imshow(amplitude, cmap='gray')
+    fig.colorbar(im, ax=ax, label="Amplitude")
     ax.set_title(title)
     ax.axis('off')
-
     # —— 保存 ——
-    if save_dir is not None and pixel is not None and picture is not None:
-        os.makedirs(save_dir, exist_ok=True)
-        filename = f"{pixel*1e6:.2f}um-{picture*1e6:.2f}um.png"
-        save_path = os.path.join(save_dir, filename)
-        fig.savefig(save_path, bbox_inches='tight')
-        plt.close(fig)
-        print(f"✅ 图像已保存到：{save_path}")
-    else:
-        plt.close(fig)
+    os.makedirs(save_dir, exist_ok=True)
+    filename = f"{i:.1f}rec.png"
+    save_path = os.path.join(save_dir, filename)
+    fig.savefig(save_path, bbox_inches='tight')
+    plt.close(fig)
+    print(f"✅ 图像已保存到：{save_path}")
 
-## --- Filter image ---
-def bandlimit_filter(image, pixelSize):
-    N = image.shape[0]
-    F = fftshift(fft2(image))
-    k = np.arange(N) - N / 2
-    f = k / (N * pixelSize)
-    FX, FY = np.meshgrid(f, f)
-    f_magnitude = np.sqrt(FX ** 2 + FY ** 2)
-    #  Nyquist frequency
-    f_max = 1 / (2 * pixelSize)
-    mask = f_magnitude <= f_max
-    F_filtered = F * mask
-    image_filtered = ifft2(ifftshift(F_filtered))
-    return image_filtered
+def update_support_absorption_simple(field_obj, sigma=3, alpha=0.2):
+    """
+    简化版 Shrink-Wrap：
+      - 以振幅偏离 1 的程度为特征
+      - 用高斯滤波平滑，再取相对阈值
+      - 不做任何形态学清理
+    """
+    # 1) 振幅偏离度
+    amp = np.abs(field_obj)
+    dev = np.abs(amp - 1.0)            # 背景振幅 = 1
 
-## --- Transfer function + filter evanescent wave ---
-def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels, f_cut):
+    # 2) 高斯平滑
+    dev_blur = gaussian_filter(dev, sigma=sigma)
+
+    # 3) 相对阈值
+    T = alpha * dev_blur.max()
+    S = dev_blur > T                   # True = 样本区域
+    return S
+
+def focus_metric(field_obj):
+    """
+    清晰度指标：Sobel 梯度图的方差
+    """
+    amp = np.abs(field_obj)
+    # 沿 x 方向的 Sobel 梯度
+    gx = sobel(amp, axis=0)
+    # 沿 y 方向
+    gy = sobel(amp, axis=1)
+    grad = np.hypot(gx, gy)
+    return grad.var()   # 方差
+def autofocus(field_sensor, z_list, pixel_size, W, H, numpixels):
+    """
+    在一系列候选距离 z_list 上自动估算最佳对焦距离
+    field_sensor: super-resolved 的全息复场（最低入射角流）
+    z_list:       一维列表或数组，包含待扫的距离，如 np.linspace(8e-2,10e-2,50)
+    返回 (best_z, focus_values)
+    """
+    focus_vals = []
+    for z in tqdm(z_list):
+        field_obj = angular_spectrum_method(field_sensor,pixel_size,z, W, H, numpixels)
+        focus_vals.append(focus_metric(field_obj))
+    focus_vals = np.array(focus_vals)
+    idx = np.argmax(focus_vals)
+    return z_list[idx], focus_vals
+
+def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels):
     FX = W / (pixelSize * numPixels)
     FY = H / (pixelSize * numPixels)
     k = 2 * np.pi / wavelength
-    a = 1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2)
-    square_root = np.sqrt(np.clip(a, 0, None))
-    Hf = np.exp(1j * k * distance * square_root)
-    # Evanescent wave filtering
-    valid_mask = a >= 0 # Evanescent wave filtering
-    NA_mask = FX ** 2 + FY ** 2 <= f_cut ** 2 # NA limitation filtering
-    total_mask = valid_mask & NA_mask
-    Hf[~total_mask] = 0
-    return Hf
+    square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
+    valid_mask = (wavelength ** 2 * FX ** 2 + wavelength ** 2 * FY ** 2) <= 1
+    square_root[~valid_mask] = 0
+    temp = np.exp(1j * k * distance * square_root)
+    return temp
 
-## --- Angular spectrum method ---
-def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels, wavelength, f_cut):
+# --- Angular spectrum method ---
+def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels):
     GT = fftshift(fft2(ifftshift(field)))
-    transfer = Transfer_function(W, H, distance, wavelength, pixelSize, numPixels, f_cut)
+    transfer = Transfer_function(W, H, distance, 525e-9, pixelSize, numPixels)
     gt_prime = fftshift(ifft2(ifftshift(GT * transfer)))
     return gt_prime
-
-## --- IPR ---
-def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W, H, numPixels, amp_field_after, wavelength, f_cut):
+# --- IPR ---
+def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
     update_phase = []
     last_field = None
-    rms_errors = []
-    ssim_errors = []
-
     for k in range(k_max):
         # a) Sensor plane
         if k == 0:
@@ -115,7 +130,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
         else:
             field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
         # b) Backpropagation and apply constraint
-        field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels, wavelength, f_cut)
+        field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels)
         phase_field2 = np.angle(field2)  # phase
         amp_field2 = np.abs(field2)  # amplitude
         abso = -np.log(amp_field2 + 1e-8) #1e-8 to prevent 0 value
@@ -125,73 +140,35 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, pixelSize, W
         amp_field2 = np.exp(-abso)
         field22 = amp_field2 * np.exp(1j * phase_field2)
         # c) Forward propagation
-        field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels, wavelength, f_cut)
-        # amp_field3 = np.abs(field3)
+        field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels)
         phase_field3 = np.angle(field3)
         update_phase.append(phase_field3)
 
         # d) Backpropagate to get the image
-        field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels, wavelength, f_cut)
-        amp_field4 = np.abs(field4)
+        field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels)
         last_field = field4
-        # Error calculation
-        if k > 0:
-            rms_error = np.sqrt(np.mean((amp_field_after - amp_field4) ** 2))
-            rms_errors.append(rms_error)
-            # print(f"Iteration {k}: RMS Error = {rms_error}")
+    return last_field
 
-            ssim_value = ssim(amp_field_after, amp_field4, data_range=amp_field_after.max() - amp_field_after.min())
-            ssim_errors.append(ssim_value)
-            # print(f"Iteration {k}: SSIM = {ssim_value}")
+sequence = np.arange(18.2, 24 + 1e-9, 0.2)
+for i in sequence:
+    object_intensity = load_and_normalize_image(fr"C:\Users\GOG\Desktop\exp_model\exp2_3\{i:.1f}.png")  # Read the image
+    measured_amplitude = np.sqrt(object_intensity)
 
-            # threshold
-            if rms_error < convergence_threshold:
-                print(f"Converged at iteration {k}")
-                return last_field, rms_errors, ssim_errors
-    # Draw RMS
-    # plt.subplot(2, 1, 1)
-    # plt.plot(rms_errors, 'r-', linewidth=2, label='RMS Error')
-    # plt.title('Convergence Analysis')
-    # plt.ylabel('RMS Error')
-    # plt.grid(True, linestyle='--', alpha=0.7)
-    # plt.legend()
-    # # Draw SSIM
-    # plt.subplot(2, 1, 2)
-    # plt.plot(ssim_errors, 'b-', linewidth=2, label='SSIM')
-    # plt.xlabel('Iteration')
-    # plt.ylabel('SSIM')
-    # plt.grid(True, linestyle='--', alpha=0.7)
-    # plt.legend()
-    # plt.tight_layout()
-    # plt.savefig('convergence_metrics.png', dpi=300)
-    # plt.show()
-    return last_field, rms_errors, ssim_errors
+    # 系统参数
+    pitch_size = 5.86e-6
+    num_pixel = 600
+    z_list = np.linspace(3e-2, 2e-1, 500)
 
-#----------------------------------------Divided Line-------------------------------------------
+    # 构建坐标系
+    x = np.arange(num_pixel) - num_pixel / 2 - 1
+    y = np.arange(num_pixel) - num_pixel / 2 - 1
+    W, H = np.meshgrid(x, y)
+    z2, focus_vals = autofocus(measured_amplitude, z_list, pitch_size, W, H, num_pixel)
+    print(f"最佳对焦距离：{z2:.3f} m")
 
-## --- Set pitch size of the image and sensor ---
-sensor_pixel_sizes = 1e-6  # The range of pixel size from 0.2-3 micrometer and step size 0.05
-object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/Rayleigh criterion/8_test.png')
+    # 执行重建算法
+    rec_field = IPR(measured_amplitude, z2, 50, pitch_size, W, H, num_pixel)
+    am_rec = np.abs(rec_field)
+    plot_image(am_rec, "rec",r"C:\Users\GOG\Desktop\exp_model\exp2_3rec",i)
 
-am = np.exp(-2 * object)
-ph0 = 3
-ph = ph0 * object
-object_field = am * np.exp(1j * ph)
-am_object_field = np.abs(object_field)
-wavelength = 532e-9
-FOV = 1024* sensor_pixel_sizes
-z2 = 0.005
-NA = (FOV / 2) / np.sqrt((FOV / 2) ** 2 + z2 ** 2) # Numerical Aperture
-f_cut = NA / wavelength # The lateral frequency on sensor plane
-print(f_cut)
-g = np.arange(1024) - 1024 / 2 - 1
-h = np.arange(1024) - 1024 / 2 - 1
-W, H = np.meshgrid(g, h)
-hologram_field = angular_spectrum_method(object_field, sensor_pixel_sizes, z2, W, H, 1024, wavelength, f_cut)
-in_hologram = np.abs(hologram_field) ** 2
-am_hologram = np.sqrt(in_hologram)
 
-rec_field, rms_errors, ssim_errors = IPR(am_hologram, z2, 50, 1.5e-20, sensor_pixel_sizes, W, H,
-                                         1024, am_object_field, wavelength, f_cut)
-am_rec_field = np.abs(rec_field)
-plot_image3(am_rec_field,"rec")
