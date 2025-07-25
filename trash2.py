@@ -26,6 +26,24 @@ def load_and_normalize_image(filepath):
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return img  # 不要做 (img-min)/(max-min) 之类的归一化
 
+def load_and_normalize_image2(filepath):
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.hdr':
+        # 用 imageio 读取 Radiance HDR
+        hdr = imageio.imread(filepath, format='HDR-FI')
+        # 线性归一化
+        hdr = hdr.astype(np.float32)
+        # 简单线性映射到 [0,1]
+        ldr = hdr / np.max(hdr)
+        # 转灰度
+        gray = np.dot(ldr[..., :3], [0.299, 0.587, 0.114])
+        return gray
+    else:
+        # 其它格式保持不变
+        img = Image.open(filepath).convert('L')
+        arr = np.array(img, dtype=np.float32)
+        return (arr - arr.min()) / (arr.max() - arr.min())
+
 def plot_image2(amplitude, title):
     amp = amplitude.astype(np.float32)
     amp = np.nan_to_num(amp)  # 把 NaN/Inf 替换掉
@@ -170,10 +188,10 @@ eps = 1e-8
 object_intensity = load_and_normalize_image(
     r"C:\Users\GOG\Desktop\Research\HDR2\hologram.tif"
 )
-background = load_and_normalize_image(
-    r"C:\Users\GOG\Desktop\Research\HDR2\background.tif"
-)
-I_norm = (object_intensity + eps) / (background + eps)
+# 全局最大值归一化到 1
+I_norm = object_intensity.astype(np.float32)
+I_norm /= I_norm.max()  # 现在 I_norm.max() == 1
+
 measured_amplitude = np.sqrt(I_norm)
 stats("HDR intensity", object_intensity)
 stats("measured_amplitude", measured_amplitude)
