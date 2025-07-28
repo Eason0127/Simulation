@@ -7,7 +7,7 @@ Image.MAX_IMAGE_PIXELS = None
 from scipy.ndimage import gaussian_filter, sobel
 from tqdm import tqdm
 import imageio.v2 as imageio
-
+import imageio
 # --- Read image and normalization ---
 def load_and_normalize_image(filepath):
     ext = os.path.splitext(filepath)[1].lower()
@@ -154,12 +154,27 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
     return last_field
 
 
-object_intensity = load_and_normalize_image(r"C:\Users\GOG\Desktop\exp_model\1.png") # Read the image
-measured_amplitude = np.sqrt(object_intensity)
+# object_intensity = load_and_normalize_image(r"C:\Users\GOG\Desktop\Research\HDR2\exp_110ms.png") # Read the image
+# measured_amplitude = np.sqrt(object_intensity)
+# FT = fftshift(fft2(measured_amplitude))
+# FT_ab = np.abs(FT)
+# FT2 = np.log(FT_ab)
+# plot_image2(FT2,"spectrum")
 
+# 1) 读回 HDR 数据
+hdr = np.load(r"C:\Users\GOG\Desktop\hdr_sample2.npy")
+
+# 2) 线性归一化到 [0,1]
+hdr_min, hdr_max = hdr.min(), hdr.max()
+hdr_norm = (hdr - hdr_min) / (hdr_max - hdr_min)
+measured_amplitude = np.sqrt(hdr_norm)
+FT = fftshift(fft2(measured_amplitude))
+FT_ab = np.abs(FT)
+FT2 = np.log(FT_ab)
+plot_image2(FT2,"spectrum")
 # 系统参数
 pitch_size = 5.86e-6
-num_pixel = 600
+num_pixel = 800
 z_list = np.linspace(3e-2, 2e-1, 500)
 
 # 构建坐标系

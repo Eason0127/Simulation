@@ -58,8 +58,34 @@ def merge_hdr(quantized_list, expo_times, sat_val):
 
     hdr = numerator / denominator        # 归一化得到最终辐射度
     return hdr
+def save_image(hdr: np.ndarray, out_path: str):
+    """
+    1) 线性归一化 hdr 到 [0,255]
+    2) pad 成正方形，默认在上下左右居中
+    3) 存成 PNG（也可改 .jpg/.tif）
+    """
+    # 1) 归一化
+    lo, hi = hdr.min(), hdr.max()
+    norm = (hdr - lo) / (hi - lo)
+    uint8 = np.round(norm * 255).astype(np.uint8)
 
-image = read_image("/Users/wangmusi/Desktop/Research/HDR/sample.jpeg")
+    # 2) pad 到方形
+    h, w = uint8.shape
+    S = max(h, w)
+    pad_h = (S - h) // 2
+    pad_w = (S - w) // 2
+    padded = np.pad(
+        uint8,
+        ((pad_h, S - h - pad_h), (pad_w, S - w - pad_w)),
+        mode='constant',
+        constant_values=0
+    )
+
+    # 3) 存盘
+    img = Image.fromarray(padded, mode='L')
+    img.save(out_path)
+
+image = read_image("C:/Users\GOG\Desktop\样本.png")
 plot_image(image)
 sat_val = 10000
 expo_time = np.arange(10,70,10)
