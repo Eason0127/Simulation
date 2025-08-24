@@ -154,38 +154,60 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
     return last_field
 
 
-# object_intensity = load_and_normalize_image(r"C:\Users\GOG\Desktop\Research\HDR2\exp_110ms.png") # Read the image
-# measured_amplitude = np.sqrt(object_intensity)
+object_intensity = load_and_normalize_image(r"/Users/wangmusi/Desktop/Research 2/setup/7.2/hologram2.png") # Read the image
+measured_amplitude = np.sqrt(object_intensity)
+object_intensity2 = load_and_normalize_image(r"/Users/wangmusi/Desktop/Research 2/setup/8.0/hologram8.png")
+measured_amplitude2 = np.sqrt(object_intensity2)
+
+# --- 检查频域 ---
 # FT = fftshift(fft2(measured_amplitude))
 # FT_ab = np.abs(FT)
 # FT2 = np.log(FT_ab)
 # plot_image2(FT2,"spectrum")
 
-# 1) 读回 HDR 数据
-hdr = np.load(r"C:\Users\GOG\Desktop\hdr_sample2.npy")
-
-# 2) 线性归一化到 [0,1]
-hdr_min, hdr_max = hdr.min(), hdr.max()
-hdr_norm = (hdr - hdr_min) / (hdr_max - hdr_min)
-measured_amplitude = np.sqrt(hdr_norm)
-FT = fftshift(fft2(measured_amplitude))
-FT_ab = np.abs(FT)
-FT2 = np.log(FT_ab)
-plot_image2(FT2,"spectrum")
+# # 1) 读回 HDR 数据
+# hdr = np.load(r"C:\Users\GOG\Desktop\hdr_sample2.npy")
+#
+# # 2) 线性归一化到 [0,1]
+# hdr_min, hdr_max = hdr.min(), hdr.max()
+# hdr_norm = (hdr - hdr_min) / (hdr_max - hdr_min)
+# measured_amplitude = np.sqrt(hdr_norm)
+# FT = fftshift(fft2(measured_amplitude))
+# FT_ab = np.abs(FT)
+# FT2 = np.log(FT_ab)
+# plot_image2(FT2,"spectrum")
 # 系统参数
 pitch_size = 5.86e-6
-num_pixel = 800
-z_list = np.linspace(3e-2, 2e-1, 500)
+num_pixel = 1216
+z_list = np.linspace(3e-2, 2e-1, 400)
 
 # 构建坐标系
 x = np.arange(num_pixel) - num_pixel / 2 - 1
 y = np.arange(num_pixel) - num_pixel / 2 - 1
 W, H = np.meshgrid(x, y)
 z2, focus_vals = autofocus(measured_amplitude,z_list,pitch_size,W,H,num_pixel)
+z22, fff = autofocus(measured_amplitude2,z_list,pitch_size,W,H,num_pixel)
 print(f"最佳对焦距离：{z2:.3f} m")
 
 # 执行重建算法
 rec_field = IPR(measured_amplitude,z2,50,pitch_size,W,H,num_pixel)
 am_rec = np.abs(rec_field)
-plot_image2(am_rec,"rec")
+rec_field2 = IPR(measured_amplitude2,z22,50,pitch_size,W,H,num_pixel)
+am_rec2 = np.abs(rec_field2)
 
+
+fig, axs = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True)
+
+# 左：无混叠
+im0 = axs[0].imshow(am_rec2, origin='lower', cmap='gray')
+axs[0].set_title('Amp rec without aliasing')
+fig.colorbar(im0, ax=axs[0])
+
+# 右：有混叠（把数据换成你想对比的，比如 am_rec2_alias 或 phase_rec）
+im1 = axs[1].imshow(am_rec2, origin='lower', cmap='gray')  # ← 关键是用 axs[1]
+axs[1].set_title('Amp rec with aliasing')
+fig.colorbar(im1, ax=axs[1])
+
+plt.show()
+# plot_image2(am_rec,"rec")
+# plot_image2(phase_rec,"phase")

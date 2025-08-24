@@ -1,65 +1,92 @@
+from PIL import Image
 import numpy as np
-from numpy.fft import fft2, fftshift, fftfreq
-from PIL import Image
-def estimate_image_max_frequency(img: np.ndarray,
-                                 pixel_size: float,
-                                 energy_thresh: float = 1e-3):
+import matplotlib.pyplot as plt
+
+
+def plot_image(img):
     """
-    估计一张灰度图像的最高空间频率。
+    将一个 PIL.Image.Image 或者 NumPy 数组绘制出来。
 
-    参数
-    ----
-    img : np.ndarray, shape (H, W)
-      灰度图像，任意 dtype
-    pixel_size : float
-      像素间距（单位：米／像素）
-    energy_thresh : float
-      能量阈值，阈值 = freq_bin_energy / total_energy，
-      低于此阈值的频率分量会被视为噪声忽略。
-
-    返回
-    ----
-    f_nyq : float
-      理论奈奎斯特频率，1/(2*pixel_size)
-    f_emp : float
-      实际在频谱中出现且能量高于阈值的最大频率（周期／米）
+    参数:
+        img: 要绘制的图像，可以是
+             - PIL.Image.Image 对象
+             - NumPy 数组 (H, W) 或 (H, W, C)
     """
-
-    H, W = img.shape
-
-    # 理论最大（奈奎斯特）——水平/垂直方向
-    f_nyq = 1.0 / (2.0 * pixel_size)
-
-    # 1) 计算二维 FFT 并移到中心
-    F = fftshift(fft2(img))
-    mag2 = np.abs(F)**2        # 功率谱
-
-    # 2) 构造频率坐标轴
-    fx = fftshift(fftfreq(W, d=pixel_size))  # 水平方向频率数组
-    fy = fftshift(fftfreq(H, d=pixel_size))  # 垂直方向频率数组
-    FX, FY = np.meshgrid(fx, fy)
-    FR = np.sqrt(FX**2 + FY**2)               # 径向频率
-
-    # 3) 阈值过滤：保留能量大于总能量 * energy_thresh 的分量
-    total_energy = mag2.sum()
-    mask = mag2 >= (total_energy * energy_thresh)
-
-    # 4) 在保留的分量里，找到最大的 FR
-    if np.any(mask):
-        f_emp = FR[mask].max()
+    # 如果是 PIL 对象，先转成数组
+    if isinstance(img, Image.Image):
+        arr = np.array(img)
     else:
-        f_emp = 0.0
+        arr = img
 
-    return f_nyq, f_emp
+    # 如果是灰度二维数组，就用灰度 colormap；否则按默认显示彩色
+    if arr.ndim == 2:
+        plt.imshow(arr, cmap='gray')
+    else:
+        plt.imshow(arr)
 
-from PIL import Image
+    plt.axis('off')  # 不显示坐标轴
+    plt.tight_layout()
+    plt.show()
 
-# 读图到 NumPy 数组
-img = np.array(Image.open("C:/Users\GOG\Desktop\exp_60.03ms.png").convert("L"), dtype=float)
 
-# 假设像素间距 5.86 μm
-pixel_size = 5.86e-6  # 米/像素
+def read_image(path: str) -> np.ndarray:
+    img = Image.open(path).convert('L')
+    return np.array(img, dtype=float)   # float 方便后续累乘
 
-f_nyq, f_emp = estimate_image_max_frequency(img, pixel_size, energy_thresh=1e-4)
-print(f"理论奈奎斯特频率 = {f_nyq:.1e} 周期/米")
-print(f"实际检测到的最高频率 = {f_emp:.1e} 周期/米")
+import numpy as np
+
+def merge_hdr(quantized_list, expo_times, sat_val):
+    # 准备累加器
+    H, W = quantized_list[0].shape
+    numerator   = np.zeros((H, W), dtype=np.float64)
+    denominator = np.zeros((H, W), dtype=np.float64)
+
+    # 定义三角形权重函数
+    def weight(q):
+        mid = sat_val / 2.0
+        # 两侧线性上升／下降
+        w = np.where(q <= mid, q, sat_val - q)
+        # 防止边缘为零权重，可加个小常数 eps
+        return np.clip(w, a_min=1e-4, a_max=None)
+
+    # 遍历所有曝光
+    for Q, t in zip(quantized_list, expo_times):
+        w = weight(Q)                     # 权重
+        E = Q / float(t)                  # 单张的辐射度估计
+        numerator   += w * E              # 加权累加
+        denominator += w
+
+    hdr = numerator / denominator        # 归一化得到最终辐射度
+    return hdr
+def save_image(hdr: np.ndarray, out_path: str):
+    """
+    1) 线性归一化 hdr 到 [0,255]
+    2) pad 成正方形，默认在上下左右居中
+    3) 存成 PNG（也可改 .jpg/.tif）
+    """
+    # 1) 归一化
+    lo, hi = hdr.min(), hdr.max()
+    norm = (hdr - lo) / (hi - lo)
+    uint8 = np.round(norm * 255).astype(np.uint8)
+
+    # 2) pad 到方形
+    h, w = uint8.shape
+    S = max(h, w)
+    pad_h = (S - h) // 2
+    pad_w = (S - w) // 2
+    padded = np.pad(
+        uint8,
+        ((pad_h, S - h - pad_h), (pad_w, S - w - pad_w)),
+        mode='constant',
+        constant_values=0
+    )
+
+    # 3) 存盘
+    img = Image.fromarray(padded, mode='L')
+    img.save(out_path)
+
+image1 = read_image("/Users/wangmusi/Desktop/exp_60.03ms.png")
+image2 = read_image("/Users/wangmusi/Desktop/hdr_sample.png")
+diff = image1 - image2
+plot_image(diff)
+

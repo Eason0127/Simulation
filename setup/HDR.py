@@ -85,7 +85,7 @@ def save_image(hdr: np.ndarray, out_path: str):
     img = Image.fromarray(padded, mode='L')
     img.save(out_path)
 
-image = read_image("C:/Users\GOG\Desktop\样本.png")
+image = read_image("/Users/wangmusi/Desktop/sample.jpeg")
 plot_image(image)
 sat_val = 10000
 expo_time = np.arange(10,70,10)
@@ -105,5 +105,9 @@ for i in expo_time:
     imaging_collection.append(real_signal)
 
 HDR = merge_hdr(imaging_collection, expo_time, sat_val)
+hdr_norm = (HDR - HDR.min())/(HDR.max() - HDR.min())
+img_norm = (image - image.min())/(image.max() - image.min())
+diff = hdr_norm - img_norm
 print("Finished")
 plot_image(HDR)
+plot_image(diff)

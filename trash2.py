@@ -184,32 +184,4 @@ def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
         last_field = field4
     return last_field
 
-eps = 1e-8
-object_intensity = load_and_normalize_image(
-    r"C:\Users\GOG\Desktop\Research\HDR2\hologram.tif"
-)
-# 全局最大值归一化到 1
-I_norm = object_intensity.astype(np.float32)
-I_norm /= I_norm.max()  # 现在 I_norm.max() == 1
-
-measured_amplitude = np.sqrt(I_norm)
-stats("HDR intensity", object_intensity)
-stats("measured_amplitude", measured_amplitude)
-
-# 系统参数
-pitch_size = 5.86e-6
-num_pixel = 800
-z_list = np.linspace(3e-2, 2e-1, 500)
-
-# 构建坐标系
-x = np.arange(num_pixel) - num_pixel / 2 - 1
-y = np.arange(num_pixel) - num_pixel / 2 - 1
-W, H = np.meshgrid(x, y)
-z2, focus_vals = autofocus(measured_amplitude,z_list,pitch_size,W,H,num_pixel)
-print(f"最佳对焦距离：{z2:.3f} m")
-
-# 执行重建算法
-rec_field = IPR(measured_amplitude,z2,50,pitch_size,W,H,num_pixel)
-am_rec = np.abs(rec_field)
-plot_image2(am_rec,"rec")
-stats("rec amplitude", np.abs(rec_field))
+z2 = []
