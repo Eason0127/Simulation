@@ -81,7 +81,7 @@ def angular_spectrum_method(field, area, distance, W, H):
     return gt_prime
 
 
-numPixels = 1024
+numPixels = 923
 pixelSize = 4e-8 # unit: meter
 z2 = 0.0001
 area = numPixels * pixelSize
@@ -92,7 +92,7 @@ W, H = np.meshgrid(x, y)
 
 
 # Define the field after sample
-object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/pic/full_image.png')
+object = load_and_normalize_image('/Users/wangmusi/Documents/GitHub/Simulation/pic/stringline.png')
 plot_field(object)
 am = np.exp(-1.6 * object)
 ph0 = 3
@@ -103,8 +103,7 @@ plot_field(field_after_object)
 
 # acquire hologram
 hologram_field = angular_spectrum_method(field_after_object, area, z2, W, H)
-hologram_field[W < H] = 0
-hologram_amplitude = np.abs(hologram_field)
+am_hologram = np.abs(hologram_field)
 plot_field(hologram_field)
 
 
@@ -126,10 +125,11 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
         amp_field2 = np.abs(field2) # amplitude
         abso = -np.log(amp_field2)
         # Apply constraints
-        abso[abso < 0] = 0
-        phase_field2[abso < 0] = 0
+        mask = abso < 0
+        abso[mask] = 0 # Mask: when the absorption index is less than 0
+        phase_field2[mask] = 0 # Set the corresponding phase to 0
         amp_field2 = np.exp(-abso)
-        field22 = amp_field2 * np.exp(1j * phase_field2)
+        field22 = amp_field2 * np.exp(1j * phase_field2) # Field after applying the constraint
 
         # c) forward propagation and update amplitude
         field3 = angular_spectrum_method(field22, area, distance, W, H)
@@ -159,7 +159,7 @@ def IPR(Measured_amplitude, distance, k_max, convergence_threshold, area, W, H):
 
 # find the image
 
-field_ite = IPR(hologram_amplitude, z2, 1000, 1.5e-4, area, W, H)
+field_ite = IPR(am_hologram, z2, 50, 1.5e-4, area, W, H)
 IPR_object = angular_spectrum_method(field_ite, area, -z2, W, H)
 plot_field(IPR_object)
 
