@@ -1,8 +1,8 @@
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
-import imageio
-import cv2
+
+
 def read_image(path: str) -> np.ndarray:
     img = Image.open(path).convert('L')
     return np.array(img, dtype=float)   # float 方便后续累乘
@@ -85,11 +85,11 @@ expo_time = [20.02,29.98,40.02,49.99,60.03,69.99,80.03,89.99,100.04,110,119.96] 
 sat_value = 255
 image_collection = []
 for i in expo_time:
-    pic = read_image(fr"C:\Users\GOG\Desktop\Research\HDR2\exp_{i}ms.png")
+    pic = read_image(f"/Users/wangmusi/Desktop/Research 2/HDR2/exp_{i}ms.png")
     image_collection.append(pic)
     print(i)
 HDR = merge_hdr(image_collection, expo_time, sat_value)
 plot_image(HDR)
-save_image(HDR,"C:/Users\GOG\Desktop\hdr_sample.png")
+save_image(HDR,"/Users/wangmusi/Desktop/HDR.png")
 # np.save(r"C:\Users\GOG\Desktop\hdr_sample2.npy", HDR)
 

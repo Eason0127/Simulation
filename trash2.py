@@ -1,187 +1,74 @@
-import tifffile as tiff
-import cv2
+# -*- coding: utf-8 -*-
+"""
+分辨率 Δx 随样品-传感器距离 z2 的变化曲线
+依据图中给出的判据与参数
+"""
+
 import numpy as np
-import os
 import matplotlib.pyplot as plt
-from numpy.fft import fft2, ifft2, fftshift, ifftshift, fft, fftfreq
-import os
-from PIL import Image
-Image.MAX_IMAGE_PIXELS = None
-from scipy.ndimage import gaussian_filter, sobel
-from tqdm import tqdm
-import imageio.v2 as imageio
 
-def load_and_normalize_image(filepath):
-    import os
-    import cv2
-    import tifffile as tiff
-    import numpy as np
+# ==== 可选：如果中文字体报错，取消下面两行注释并安装对应字体 ====
+# plt.rcParams['font.sans-serif'] = ['SimHei']    # 或者 'Noto Sans CJK SC'
+# plt.rcParams['axes.unicode_minus'] = False
 
-    ext = os.path.splitext(filepath)[1].lower()
-    if ext in ('.tif', '.tiff'):
-        img = tiff.imread(filepath).astype(np.float32)   # 直接读 float32 HDR
-    else:
-        img = cv2.imread(filepath, cv2.IMREAD_UNCHANGED).astype(np.float32)
-        if img.ndim == 3:  # 万一是彩色
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    return img  # 不要做 (img-min)/(max-min) 之类的归一化
+# ----- 已知参数（单位见注释） -----
+delta_pixel = 5.86       # 像元尺寸 Δ = 1 µm
+w = 3516                # 传感器宽度 w = 240 µm
+lam = 0.525              # 波长 λ = 0.532 µm (532 nm)
+n = 1.0                  # 折射率 n = 1
+delta_lambda = 0.03      # LED 带宽 Δλ = 0.03 µm (30 nm)
+z1_mm = 220.0            # LED-样品距离 z1 = 20 cm = 200 mm
+z1 = z1_mm * 1000.0      # 转成 µm
+D = 50.0                 # 有效光源尺寸 D = 50 µm
+z2_mm = np.linspace(60.0, 120.0, 1200)
+z2 = z2_mm * 1000.0  # µm
+# ----- 派生量 -----
+# Gaussian 光谱的纵向相干长度：Lc = (2 ln 2 / π) * λ^2 / Δλ
+L_coh = (2 * np.log(2) / np.pi) * (lam**2 / delta_lambda)
+         # 纵向相干长度 ≈ λ^2/Δλ (µm)
+r_c = 0.5 * lam * (z1+z2) / D               # 空间相干半径 (µm)
 
-def load_and_normalize_image2(filepath):
-    ext = os.path.splitext(filepath)[1].lower()
-    if ext == '.hdr':
-        # 用 imageio 读取 Radiance HDR
-        hdr = imageio.imread(filepath, format='HDR-FI')
-        # 线性归一化
-        hdr = hdr.astype(np.float32)
-        # 简单线性映射到 [0,1]
-        ldr = hdr / np.max(hdr)
-        # 转灰度
-        gray = np.dot(ldr[..., :3], [0.299, 0.587, 0.114])
-        return gray
-    else:
-        # 其它格式保持不变
-        img = Image.open(filepath).convert('L')
-        arr = np.array(img, dtype=np.float32)
-        return (arr - arr.min()) / (arr.max() - arr.min())
+# ----- 距离范围：z2 = 1 ~ 3 mm -----
 
-def plot_image2(amplitude, title):
-    amp = amplitude.astype(np.float32)
-    amp = np.nan_to_num(amp)  # 把 NaN/Inf 替换掉
 
-    # 用百分位拉伸避免 max==min
-    p1, p2 = np.percentile(amp, (0.1, 99.9))
-    if p2 <= p1:  # 退路：整幅都是常数
-        disp = np.zeros_like(amp, dtype=np.float32)
-    else:
-        disp = np.clip((amp - p1) / (p2 - p1), 0, 1)
+# ----- 各限制角 -----
+theta1 = np.arccos(z2 / (z2 + L_coh))       # 时间相干限制
+theta2 = np.arctan(r_c / z2)                # 空间相干/相干半径限制
+theta_geo = np.arctan((w/2.0) / z2)         # 传感器几何视场限制
 
-    plt.figure(figsize=(6, 6))
-    im = plt.imshow(disp, cmap='gray', vmin=0, vmax=1)
-    plt.colorbar(im, label="Normalized for display")
-    plt.title(title)
-    plt.axis('off')
-    plt.show()
+theta_max = np.minimum.reduce([theta1, theta2, theta_geo])
 
-def stats(name, a):
-    a = np.asarray(a)
-    print(f"{name}: dtype={a.dtype}, "
-          f"min={np.nanmin(a):.3g}, max={np.nanmax(a):.3g}, "
-          f"p1={np.nanpercentile(a,1):.3g}, p99={np.nanpercentile(a,99):.3g}, "
-          f"NaN={np.isnan(a).sum()}, Inf={np.isinf(a).sum()}")
-def plot_image(amplitude,title, save_dir, pixel, picture):
-    fig, ax = plt.subplots(figsize=(6, 6))
-    im = ax.imshow(amplitude, cmap='gray')
-    fig.colorbar(im, ax=ax, label="Amplitude")
-    ax.set_title(title)
-    ax.axis('off')
-    # —— 保存 ——
-    if save_dir is not None and pixel is not None and picture is not None:
-        os.makedirs(save_dir, exist_ok=True)
-        filename = f"{pixel:.2f}-{picture:.2f}.png"
-        save_path = os.path.join(save_dir, filename)
-        fig.savefig(save_path, bbox_inches='tight')
-        plt.close(fig)
-        print(f"✅ 图像已保存到：{save_path}")
-    else:
-        # 如果不满足保存条件，仅关闭 figure
-        plt.close(fig)
+# ----- 分辨率 -----
+delta_x = lam / (2.0 * n * np.sin(theta_max))          # 衍射/相干限制的分辨率 (µm)
+final_resolution = np.maximum(delta_x, delta_pixel)    # 考虑像元尺寸
 
-def update_support_absorption_simple(field_obj, sigma=3, alpha=0.2):
-    """
-    简化版 Shrink-Wrap：
-      - 以振幅偏离 1 的程度为特征
-      - 用高斯滤波平滑，再取相对阈值
-      - 不做任何形态学清理
-    """
-    # 1) 振幅偏离度
-    amp = np.abs(field_obj)
-    dev = np.abs(amp - 1.0)            # 背景振幅 = 1
+# ====== 你的测量数据（红色叉叉） ======
+data_d_mm = np.array([
+    68, 70, 71, 72, 75, 76, 77, 80, 81, 82, 84, 85, 87, 92, 93, 96, 100,110, 119
+])
+data_res_um = np.array([
+    24.8, 25, 25.3, 25.5, 25.8, 26, 26.3, 26.6, 26.8, 27, 27.2, 27.5,27.8, 28.5, 28.8, 29.5, 31.05, 33,35
+])
 
-    # 2) 高斯平滑
-    dev_blur = gaussian_filter(dev, sigma=sigma)
+# ----- 绘图 -----
+plt.figure(figsize=(6, 4))
+plt.plot(z2_mm, final_resolution, label='Theoretical resolution curve')
+# 加入红色叉叉的数据点
+plt.plot(
+    data_d_mm, data_res_um,
+    linestyle='None', marker='x', markersize=8, markeredgewidth=1.8,
+    color='red', label='Test data'
+)
 
-    # 3) 相对阈值
-    T = alpha * dev_blur.max()
-    S = dev_blur > T                   # True = 样本区域
-    return S
+plt.xlabel('Sample-sensor distance z₂ (mm)')
+plt.ylabel('Resolution (µm)')
+# plt.title('2µm')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
-def focus_metric(field_obj):
-    """
-    清晰度指标：Sobel 梯度图的方差
-    """
-    amp = np.abs(field_obj)
-    # 沿 x 方向的 Sobel 梯度
-    gx = sobel(amp, axis=0)
-    # 沿 y 方向
-    gy = sobel(amp, axis=1)
-    grad = np.hypot(gx, gy)
-    return grad.var()   # 方差
-def autofocus(field_sensor, z_list, pixel_size, W, H, numpixels):
-    """
-    在一系列候选距离 z_list 上自动估算最佳对焦距离
-    field_sensor: super-resolved 的全息复场（最低入射角流）
-    z_list:       一维列表或数组，包含待扫的距离，如 np.linspace(8e-2,10e-2,50)
-    返回 (best_z, focus_values)
-    """
-    focus_vals = []
-    for z in tqdm(z_list):
-        field_obj = angular_spectrum_method(field_sensor,pixel_size,z, W, H, numpixels)
-        focus_vals.append(focus_metric(field_obj))
-    focus_vals = np.array(focus_vals)
-    idx = np.argmax(focus_vals)
-    return z_list[idx], focus_vals
-
-def Transfer_function(W, H, distance, wavelength, pixelSize, numPixels):
-    FX = W / (pixelSize * numPixels)
-    FY = H / (pixelSize * numPixels)
-    k = 2 * np.pi / wavelength
-    square_root = np.sqrt(1 - (wavelength ** 2 * FX ** 2) - (wavelength ** 2 * FY ** 2))
-    valid_mask = (wavelength ** 2 * FX ** 2 + wavelength ** 2 * FY ** 2) <= 1
-    square_root[~valid_mask] = 0
-    temp = np.exp(1j * k * distance * square_root)
-    return temp
-
-# --- Angular spectrum method ---
-def angular_spectrum_method(field, pixelSize, distance, W, H, numPixels):
-    GT = fftshift(fft2(ifftshift(field)))
-    transfer = Transfer_function(W, H, distance, 525e-9, pixelSize, numPixels)
-    gt_prime = fftshift(ifft2(ifftshift(GT * transfer)))
-    return gt_prime
-
-# --- IPR ---
-def IPR(Measured_amplitude, distance, k_max, pixelSize, W, H, numPixels):
-    update_phase = []
-    last_field = None
-    for k in range(k_max):
-        # a) Sensor plane
-        if k == 0:
-            phase0 = np.zeros(Measured_amplitude.shape)
-            field1 = Measured_amplitude * np.exp(1j * phase0)
-        else:
-            field1 = Measured_amplitude * np.exp(1j * update_phase[k - 1])
-        # b) Backpropagation and apply constraint
-        field2 = angular_spectrum_method(field1, pixelSize, -distance, W, H, numPixels)
-        phase_field2 = np.angle(field2)  # phase
-        amp_field2 = np.abs(field2)  # amplitude
-        # abso = -np.log(amp_field2 + 1e-8) #1e-8 to prevent 0 value
-        # Apply constraints
-        # 只在 amp2 < 1 的地方施加吸收约束
-        mask = amp_field2 < 1.0
-        abso = np.zeros_like(amp_field2)
-        abso[mask] = -np.log(amp_field2[mask] + 1e-8)
-        amp_new = np.ones_like(amp_field2)  # 背景保持 1
-        amp_new[mask] = np.exp(-abso[mask])  # 物体区恢复
-        # 相位不要清零
-        field22 = amp_new * np.exp(1j * phase_field2)
-
-        # c) Forward propagation
-        field3 = angular_spectrum_method(field22, pixelSize, distance, W, H, numPixels)
-        phase_field3 = np.angle(field3)
-        update_phase.append(phase_field3)
-
-        # d) Backpropagate to get the image
-        field4 = angular_spectrum_method(field3, pixelSize, -distance, W, H, numPixels)
-        last_field = field4
-    return last_field
-
-z2 = []
+# ----- 可选：打印几个代表值 -----
+for mm in [1, 2, 3]:
+    i = np.argmin(np.abs(z2_mm - mm))
+    print(f"z2 = {mm:.0f} mm -> Δx(最终) ≈ {final_resolution[i]:.2f} µm")
